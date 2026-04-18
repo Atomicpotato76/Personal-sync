@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     workspace_root: Path = Path.cwd()
-    default_guidance_prompt_path: Path | None = Path(r"C:\Users\skyhu\Downloads\vibe-coding-prompts.md")
+    default_guidance_prompt_path: Path | None = None
     discord_webhook_url: str | None = None
     discord_webhook_username: str = "Hermes Pipeline"
     planner_model: str = "claude-opus-4-6"
