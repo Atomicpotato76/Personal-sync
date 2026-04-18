@@ -3,8 +3,6 @@ name: Claude Code Auto Review
 on:
   pull_request:
     types: [opened, synchronize]
-    paths:
-      - 'study-pipeline/**'
 
 permissions:
   contents: read
@@ -23,7 +21,7 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          model: "claude-sonnet-4-6"
+          claude_args: "--model claude-sonnet-4-6"
           prompt: |
             이 PR의 study-pipeline 코드를 검증해줘. 다음 항목을 반드시 체크:
 
