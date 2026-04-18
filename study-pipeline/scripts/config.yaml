@@ -62,6 +62,7 @@ llm:
     max_tokens: 16384
     temperature: 0.3             # API 호출 시 temperature (thinking 모드에서는 자동 1.0)
     top_p: 1.0                   # nucleus sampling
+    thinking_budget: 10000       # 명시적 설정 (llm_router 기본값과 동일)
     prefer_subscription: true    # Claude Code CLI(구독) 우선 사용
   # 작업별 라우팅
   router:
@@ -159,7 +160,7 @@ pubmed:
   max_papers: 3
   search_scope: "recent_5y"
   language: "english"
-  email: ""                # NCBI Entrez 필수 (아무 이메일)
+  email: "skyhuman13@gmail.com"  # NCBI Entrez 필수
 
 # ── 이미지 파이프라인 (v2) ──
 image_pipeline:
