@@ -1,0 +1,50 @@
+name: Claude Code Auto Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: "--model claude-sonnet-4-6"
+          prompt: |
+            이 PR의 study-pipeline 코드를 검증해줘. 다음 항목을 반드시 체크:
+
+            ## 모델명 검증
+            - OpenAI 모델 ID가 최신 API 스펙과 일치하는지 (gpt-5.4, gpt-5.4-pro 등)
+            - Anthropic 모델 ID가 최신 API 스펙과 일치하는지 (claude-opus-4-6, claude-sonnet-4-6 등)
+            - 하드코딩된 모델명이 있으면 date suffix 정확성 확인
+
+            ## 파라미터 검증
+            - temperature 범위 (0~1, thinking 모드에서는 반드시 1)
+            - top_p, top_k 값의 유효성
+            - max_tokens / max_completion_tokens 파라미터 선택이 모델에 맞는지
+            - thinking_budget이 max_tokens보다 크지 않은지
+            - reasoning_effort 값이 유효한지 ("low", "medium", "high")
+
+            ## API 호출 검증
+            - Anthropic API version 헤더가 현행인지
+            - API endpoint URL이 올바른지
+            - 에러 핸들링이 적절한지
+
+            ## 코드 품질
+            - 타입 힌트 정확성
+            - 예외 처리 누락
+            - 하드코딩된 값 중 config로 빼야 할 것
+
+            리뷰는 한국어로 작성하고, 심각도를 🔴(즉시 수정) 🟡(권장) 🟢(참고)로 표시해줘.

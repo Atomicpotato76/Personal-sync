@@ -66,9 +66,9 @@ llm:
   # 작업별 라우팅
   router:
     enabled: true
-    mode: "import"
-    project_path: "C:/Users/skyhu/Documents/AI_projects/pbl-router-v4"
-    server_url: "http://localhost:8000"
+    mode: "http"
+    project_path: "C:/Users/skyhu/Documents/AI_projects/gateway_router"
+    server_url: "http://100.67.163.118:8000"
     profile: "study"
     preset: ""
     timeout: 180
@@ -236,3 +236,10 @@ subjects:
     slides_dir: "PDF/"
     slide_pattern: "Chapter *.pdf"
     pubmed_keywords: []
+
+# ── Discord 알림 ──
+discord:
+  webhook_url: "https://discord.com/api/webhooks/1494598922662838343/_4p1UssUs8XCjcQXy9MYUCY7nrmmAWZX88NxiAbuUha9u4APldPqXKOI2wlSSep4Rtk3"
+  notify_on_complete: true
+  notify_on_error: true
+  notify_on_quiz: true
