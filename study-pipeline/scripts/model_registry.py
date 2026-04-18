@@ -215,7 +215,7 @@ def _fallback_openai_models() -> list[ModelInfo]:
 
 # Anthropic 모델 ID 패턴
 _CLAUDE_PATTERN = re.compile(
-    r"^claude-(opus|sonnet|haiku)-(\d+(?:\.\d+)?)-(\d{8})$"
+    r"^claude-(opus|sonnet|haiku)-(\d+(?:[.-]\d+)?)(?:-(\d{8}))?$"
 )
 
 # 티어별 메타데이터
@@ -233,16 +233,10 @@ def _parse_claude_model(model_id: str) -> Optional[ModelInfo]:
     """Anthropic 모델 ID 파싱."""
     m = _CLAUDE_PATTERN.match(model_id)
     if not m:
-        # claude-sonnet-4-6[1m] 같은 짧은 형태도 시도
-        m2 = re.match(r"^claude-(opus|sonnet|haiku)-(\d+(?:\.\d+)?)$", model_id)
-        if m2:
-            tier_name = m2.group(1)
-            version = m2.group(2)
-        else:
-            return None
-    else:
-        tier_name = m.group(1)
-        version = m.group(2)
+        return None
+
+    tier_name = m.group(1)
+    version = m.group(2).replace("-", ".")
 
     meta = _CLAUDE_TIER_META.get(tier_name, _CLAUDE_TIER_META["sonnet"])
     family = f"claude-{version}"
@@ -316,8 +310,9 @@ def _dedupe_claude_models(models: list[ModelInfo]) -> list[ModelInfo]:
 def _fallback_anthropic_models() -> list[ModelInfo]:
     """API 미연결 시 알려진 Claude 모델 반환."""
     known = [
-        ("claude-opus-4-6-20250415",   "opus",   "4.6"),
-        ("claude-sonnet-4-6-20250415", "sonnet", "4.6"),
+        ("claude-opus-4-7",            "opus",   "4.7"),
+        ("claude-opus-4-6",            "opus",   "4.6"),
+        ("claude-sonnet-4-6",          "sonnet", "4.6"),
         ("claude-haiku-4-5-20251001",  "haiku",  "4.5"),
     ]
     models = []
