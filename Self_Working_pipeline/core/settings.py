@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     planner_request_digest_chars: int = 4000
     pipeline_db_path: str = "outputs/pipeline.db"
     max_retries_per_workstream: int = 2
+    pipeline_mode: str = "code"
 
     model_config = SettingsConfigDict(
         extra="ignore",
