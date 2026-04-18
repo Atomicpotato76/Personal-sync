@@ -73,6 +73,10 @@ class HermesOrchestrator:
             self._notify("plan_approved", run_id)
             return approved
         if stage == ApprovalStage.checkpoint:
+            # NOTE: checkpoint approval은 stage를 전이하지 않는다.
+            # executing/reviewing stage 내에서 다음 workstream으로 계속 진행하기 위해
+            # status만 pending으로 되돌린다. plan/merge approve와 달리
+            # 새로운 RunStage로의 전이가 필요하지 않다.
             if run.stage not in {RunStage.executing, RunStage.reviewing} or run.status not in {
                 RunStatus.waiting_approval,
                 RunStatus.blocked,
@@ -187,7 +191,7 @@ class HermesOrchestrator:
             if session.cycles_completed >= session.max_cycles:
                 trace = self._build_policy_trace(
                     run_id,
-                    stage=approval_stage or ApprovalStage.checkpoint,
+                    stage=approval_stage or self._infer_approval_stage_from_run(run),
                     session=session,
                     rationale=f"Supervisor reached the cycle limit of {session.max_cycles}.",
                     error_code="MAX_CYCLES",
@@ -222,7 +226,7 @@ class HermesOrchestrator:
                 if session.consecutive_failures >= session.max_consecutive_failures:
                     trace = self._build_policy_trace(
                         run_id,
-                        stage=approval_stage or ApprovalStage.checkpoint,
+                        stage=approval_stage or self._infer_approval_stage_from_run(run),
                         session=session,
                         rationale=(
                             f"Supervisor observed {session.consecutive_failures} consecutive run failures and stopped."
@@ -246,6 +250,15 @@ class HermesOrchestrator:
             session.current_agent_id = None
             self._stamp_session(session)
             self.memory.save_supervisor_session(run_id, session)
+
+    @staticmethod
+    def _infer_approval_stage_from_run(run: RunRecord) -> ApprovalStage:
+        """Run의 현재 stage를 기반으로 가장 적절한 ApprovalStage를 추론한다."""
+        if run.stage == RunStage.planning:
+            return ApprovalStage.plan
+        if run.stage == RunStage.testing:
+            return ApprovalStage.merge
+        return ApprovalStage.checkpoint
 
     def _execute_until_gate(self, run_id: str) -> RunRecord:
         run = self.memory.get_run(run_id)
