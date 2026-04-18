@@ -18,10 +18,18 @@ class PlannerService:
         ("instruction", "checklist", "first", "day 1"),
     )
 
-    def __init__(self, adapter: JsonModelAdapter, *, guidance_prompt: str = "", request_digest_chars: int = 4000) -> None:
+    def __init__(
+        self,
+        adapter: JsonModelAdapter,
+        *,
+        guidance_prompt: str = "",
+        request_digest_chars: int = 4000,
+        mode: str = "code",
+    ) -> None:
         self.adapter = adapter
         self.guidance_prompt = guidance_prompt
         self.request_digest_chars = request_digest_chars
+        self.mode = mode
 
     def _split_markdown_sections(self, text: str) -> tuple[list[str], list[tuple[str, list[str]]]]:
         preamble: list[str] = []
@@ -129,24 +137,46 @@ class PlannerService:
     def create_plan(self, user_request: UserRequest) -> PlanBundle:
         planning_request = self.condense_request(user_request.raw_request)
         request_label = "Planning digest" if planning_request != user_request.raw_request else "User request"
-        system_prompt = compose_system_prompt(
-            (
-                "You are Claude Code acting as the architecture and planning lead for a multi-agent "
-                "software delivery pipeline. Produce a compact but implementation-ready plan bundle."
-            ),
-            self.guidance_prompt,
-            section_name="planning, specification, workflow rules, and repository expectations",
-        )
-        user_prompt = (
-            "Create a plan bundle for the following natural language request.\n"
-            "Requirements:\n"
-            "- produce project brief, architecture spec, API contract, workstreams, and test plan\n"
-            "- keep workstreams small and verifiable\n"
-            "- make deliverables concrete enough for a coding agent to execute\n"
-            "- prefer a Python-first local MVP if the request does not force another stack\n\n"
-            f"{request_label}:\n{planning_request}\n\n"
-            "Return JSON only."
-        )
+        if self.mode == "research":
+            system_prompt = compose_system_prompt(
+                (
+                    "You are a research planning agent for a multi-agent investigation pipeline. "
+                    "Decompose the investigation request into focused research workstreams. "
+                    "Each workstream should target a specific subtopic or angle of investigation."
+                ),
+                self.guidance_prompt,
+                section_name="research planning, topic decomposition, and investigation methodology",
+            )
+            user_prompt = (
+                "Create a research plan bundle for the following investigation request.\n"
+                "Requirements:\n"
+                "- decompose the topic into focused, non-overlapping research workstreams\n"
+                "- each workstream should have clear deliverables (markdown reports)\n"
+                "- include a verification plan (how to cross-check findings)\n"
+                "- prioritize authoritative and primary sources\n"
+                "- keep workstreams small enough to be completed in one research session\n\n"
+                f"{request_label}:\n{planning_request}\n\n"
+                "Return JSON only."
+            )
+        else:
+            system_prompt = compose_system_prompt(
+                (
+                    "You are Claude Code acting as the architecture and planning lead for a multi-agent "
+                    "software delivery pipeline. Produce a compact but implementation-ready plan bundle."
+                ),
+                self.guidance_prompt,
+                section_name="planning, specification, workflow rules, and repository expectations",
+            )
+            user_prompt = (
+                "Create a plan bundle for the following natural language request.\n"
+                "Requirements:\n"
+                "- produce project brief, architecture spec, API contract, workstreams, and test plan\n"
+                "- keep workstreams small and verifiable\n"
+                "- make deliverables concrete enough for a coding agent to execute\n"
+                "- prefer a Python-first local MVP if the request does not force another stack\n\n"
+                f"{request_label}:\n{planning_request}\n\n"
+                "Return JSON only."
+            )
         result = self.adapter.generate_structured(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
