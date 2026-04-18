@@ -330,9 +330,10 @@ class HermesOrchestrator:
 
         for item in self.memory.list_workstreams(run_id):
             if item["workstream_id"] in impacted:
-                retry_count = item["retry_count"] + 1
-                if retry_count > self.max_retries_per_workstream:
-                    self.memory.update_workstream(run_id, item["workstream_id"], status=WorkstreamStatus.failed, retry_count=retry_count)
+                # test failure로 인한 retry는 review retry와 별도로 카운트한다.
+                test_retry_count = sum(1 for fb in item["latest_feedback"] if fb.startswith("[test-failure]"))
+                if test_retry_count >= self.max_retries_per_workstream:
+                    self.memory.update_workstream(run_id, item["workstream_id"], status=WorkstreamStatus.failed)
                     self.memory.update_run(run_id, stage=RunStage.testing, status=RunStatus.failed, last_error="Tests failed after selective retries.")
                     self.memory.save_direction_snapshot(run_id, "run_failed")
                     self._notify("run_failed", run_id)
@@ -341,8 +342,7 @@ class HermesOrchestrator:
                     run_id,
                     item["workstream_id"],
                     status=WorkstreamStatus.retry_requested,
-                    retry_count=retry_count,
-                    latest_feedback=[report.stderr or report.stdout or "Fix failing tests."],
+                    latest_feedback=[f"[test-failure] {report.stderr or report.stdout or 'Fix failing tests.'}"],
                 )
         self.state_machine.ensure_transition(RunStage.testing, RunStage.executing)
         self.memory.append_event(
@@ -389,7 +389,9 @@ class HermesOrchestrator:
                 self.memory.update_workstream(run_id, workstream_id, status=WorkstreamStatus.completed)
                 return
 
-            retry_count = ready["retry_count"] + 1
+            # review 결과 처리 직전에 최신 workstream 상태를 다시 읽어 stale read를 방지한다.
+            fresh_ws = next(item for item in self.memory.list_workstreams(run_id) if item["workstream_id"] == workstream_id)
+            retry_count = fresh_ws["retry_count"] + 1
             if retry_count > self.max_retries_per_workstream:
                 self.memory.update_workstream(run_id, workstream_id, status=WorkstreamStatus.failed, retry_count=retry_count)
                 self.memory.update_run(
