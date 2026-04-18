@@ -66,7 +66,7 @@ class OpenAIJsonAdapter(JsonModelAdapter):
             "model": self.model,
             "instructions": system_content,
             "input": user_prompt,
-            "tools": [{"type": "web_search"}],
+            "tools": [{"type": "web_search"}, {"type": "code_interpreter"}],
         }
         if use_response_format:
             schema_name = "executor_output"
