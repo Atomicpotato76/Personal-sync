@@ -422,10 +422,17 @@ def gui() -> None:
     """Launch the local desktop GUI."""
     from apps.gui.main import launch_gui
 
+    settings = get_settings()
+
+    def on_mode_change(new_mode: str) -> None:
+        settings.pipeline_mode = new_mode
+
     launch_gui(
-        orchestrator_factory=build_orchestrator,
-        memory_factory=build_memory,
-        supervisor_factory=build_supervisor,
+        orchestrator_factory=lambda: build_orchestrator(settings),
+        memory_factory=lambda: build_memory(settings),
+        supervisor_factory=lambda: build_supervisor(settings) if settings.supervisor_mode_enabled else None,
+        initial_mode=settings.pipeline_mode,
+        on_mode_change=on_mode_change,
     )
 
 
