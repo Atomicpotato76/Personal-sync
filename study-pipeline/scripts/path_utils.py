@@ -5,7 +5,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+import platform
 from pathlib import Path
+import re as _re
 
 
 @dataclass(frozen=True)
@@ -23,9 +25,25 @@ class StudyPaths:
     output_pdf: Path
 
 
+def _convert_win_to_wsl(path_str: str) -> str:
+    """Windows 경로(C:/... 또는 C:\\...)를 WSL 경로(/mnt/c/...)로 변환.
+
+    Linux(WSL)에서 실행 중일 때만 변환하며, 그 외 환경에서는 원본 그대로 반환.
+    """
+    if platform.system() != "Linux":
+        return path_str
+    m = _re.match(r"^([A-Za-z]):[/\\]", path_str)
+    if m:
+        drive = m.group(1).lower()
+        rest = path_str[2:].replace("\\", "/")
+        return f"/mnt/{drive}{rest}"
+    return path_str
+
+
 def resolve_path(value: str | Path, base: Path) -> Path:
-    """절대경로는 그대로, 상대경로는 base 기준으로 해석."""
-    path = Path(value)
+    """절대경로는 그대로, 상대경로는 base 기준으로 해석. Windows 형식 경로는 WSL 실행 시 자동 변환."""
+    converted = _convert_win_to_wsl(str(value))
+    path = Path(converted)
     if path.is_absolute():
         return path
     return (base / path).resolve()
