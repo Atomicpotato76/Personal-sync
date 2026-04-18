@@ -64,7 +64,6 @@ class OpenAIJsonAdapter(JsonModelAdapter):
     ) -> str:
         kwargs: dict = {
             "model": self.model,
-            "temperature": 0,
             "instructions": system_content,
             "input": user_prompt,
             "tools": [{"type": "web_search"}],
@@ -75,7 +74,7 @@ class OpenAIJsonAdapter(JsonModelAdapter):
                 "format": {
                     "type": "json_schema",
                     "name": schema_name,
-                    "strict": True,
+                    "strict": False,
                     "schema": response_schema or {"type": "object"},
                 }
             }
