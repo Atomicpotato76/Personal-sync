@@ -45,16 +45,27 @@ def _read_optional_text(path: Path | None) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def default_dashboard_messages() -> tuple[str, str, str, str]:
-    overview = (
-        "Hermes 파이프라인 대시보드\n\n"
-        "1. 제안서를 붙여넣거나 마크다운 파일을 불러옵니다.\n"
-        "2. 계획을 생성합니다.\n"
-        "3. 개요와 방향 탭을 검토합니다.\n"
-        "4. 추천된 승인을 진행한 뒤 파이프라인을 실행합니다.\n"
-        "5. 산출물 탭과 폴더 열기 버튼으로 결과를 확인합니다.\n"
-        "6. 완전히 다른 작업을 시작하려면 상단의 '새 세션 시작'을 누르세요."
-    )
+def default_dashboard_messages(mode: str = "code") -> tuple[str, str, str, str]:
+    if mode == "research":
+        overview = (
+            "Hermes 조사 파이프라인 대시보드\n\n"
+            "1. 조사 주제를 붙여넣거나 마크다운 파일을 불러옵니다.\n"
+            "2. 조사 계획을 생성합니다.\n"
+            "3. 개요와 방향 탭을 검토합니다.\n"
+            "4. 추천된 승인을 진행한 뒤 파이프라인을 실행합니다.\n"
+            "5. 산출물 탭과 폴더 열기 버튼으로 조사 결과를 확인합니다.\n"
+            "6. 완전히 다른 조사를 시작하려면 상단의 '새 세션 시작'을 누르세요."
+        )
+    else:
+        overview = (
+            "Hermes 파이프라인 대시보드\n\n"
+            "1. 제안서를 붙여넣거나 마크다운 파일을 불러옵니다.\n"
+            "2. 계획을 생성합니다.\n"
+            "3. 개요와 방향 탭을 검토합니다.\n"
+            "4. 추천된 승인을 진행한 뒤 파이프라인을 실행합니다.\n"
+            "5. 산출물 탭과 폴더 열기 버튼으로 결과를 확인합니다.\n"
+            "6. 완전히 다른 작업을 시작하려면 상단의 '새 세션 시작'을 누르세요."
+        )
     direction = "첫 계획 또는 단계 체크포인트가 저장되면 방향 안내가 여기에 표시됩니다."
     artifacts = "실행을 불러오면 산출물, 매니페스트 내용, 로컬 파일 경로가 여기에 표시됩니다."
     plan = "실행을 생성하거나 불러오면 마크다운 계획 요약이 여기에 표시됩니다."
@@ -239,13 +250,14 @@ def launch_gui(
     orchestrator_factory: Callable[[], HermesOrchestrator],
     memory_factory: Callable[[], MemoryService],
     supervisor_factory: Callable[[], SupervisorService] | None = None,
+    initial_mode: str = "code",
+    on_mode_change: Callable[[str], None] | None = None,
 ) -> None:
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
     from tkinter.scrolledtext import ScrolledText
 
     root = tk.Tk()
-    root.title("Hermes 파이프라인 대시보드")
     root.geometry("1440x920")
     root.minsize(1180, 760)
 
@@ -273,6 +285,22 @@ def launch_gui(
     supervisor_mode_var = tk.StringVar(value="감독 꺼짐")
     supervisor_gate_var = tk.StringVar(value="게이트 없음")
     supervisor_cycles_var = tk.StringVar(value="잔여 cycle -")
+    pipeline_mode_var = tk.StringVar(value=initial_mode if initial_mode in {"code", "research"} else "code")
+    request_guide_var = tk.StringVar(
+        value="여기에 프로젝트 제안서를 붙여넣거나, 마크다운/텍스트 파일을 불러온 뒤 계획을 생성하세요."
+        if pipeline_mode_var.get() == "code"
+        else "여기에 조사 주제를 붙여넣거나, 마크다운/텍스트 파일을 불러온 뒤 조사 계획을 생성하세요."
+    )
+
+    def set_mode_decorations(mode: str) -> None:
+        mode_title = "조사" if mode == "research" else "개발"
+        root.title(f"Hermes {mode_title} 파이프라인 대시보드")
+        if mode == "research":
+            request_guide_var.set("여기에 조사 주제를 붙여넣거나, 마크다운/텍스트 파일을 불러온 뒤 조사 계획을 생성하세요.")
+        else:
+            request_guide_var.set("여기에 프로젝트 제안서를 붙여넣거나, 마크다운/텍스트 파일을 불러온 뒤 계획을 생성하세요.")
+
+    set_mode_decorations(pipeline_mode_var.get())
 
     root.columnconfigure(0, weight=1)
     root.rowconfigure(2, weight=1)
@@ -283,7 +311,7 @@ def launch_gui(
 
     toolbar = ttk.Frame(root, padding=(14, 12, 14, 8))
     toolbar.grid(row=0, column=0, sticky="ew")
-    for idx in range(9):
+    for idx in range(11):
         toolbar.columnconfigure(idx, weight=1 if idx in {1, 3} else 0)
 
     ttk.Label(toolbar, text="최근 실행").grid(row=0, column=0, sticky="w", padx=(0, 8))
@@ -307,6 +335,15 @@ def launch_gui(
     ttk.Button(toolbar, text="디스코드 알림", command=lambda: handle_notify()).grid(row=1, column=6, sticky="ew", pady=(10, 0), padx=(0, 8))
     ttk.Button(toolbar, text="출력 폴더 열기", command=lambda: open_outputs()).grid(row=1, column=7, sticky="ew", pady=(10, 0))
     ttk.Button(toolbar, text="감독관 자동 진행", command=lambda: handle_supervise()).grid(row=1, column=8, sticky="ew", pady=(10, 0))
+    ttk.Label(toolbar, text="모드").grid(row=1, column=9, sticky="w", pady=(10, 0), padx=(8, 4))
+    mode_combo = ttk.Combobox(
+        toolbar,
+        textvariable=pipeline_mode_var,
+        state="readonly",
+        values=["code", "research"],
+        width=10,
+    )
+    mode_combo.grid(row=1, column=10, sticky="ew", pady=(10, 0))
 
     cards = ttk.Frame(root, padding=(14, 0, 14, 10))
     cards.grid(row=1, column=0, sticky="ew")
@@ -347,7 +384,7 @@ def launch_gui(
     request_frame.rowconfigure(1, weight=1)
     ttk.Label(
         request_frame,
-        text="여기에 프로젝트 제안서를 붙여넣거나, 마크다운/텍스트 파일을 불러온 뒤 계획을 생성하세요.",
+        textvariable=request_guide_var,
         wraplength=360,
         justify=tk.LEFT,
     ).grid(row=0, column=0, sticky="w", pady=(0, 8))
@@ -633,7 +670,10 @@ def launch_gui(
         supervisor_cycles_var.set("잔여 cycle -")
         set_input_text(request_box, "")
         set_input_text(feedback_box, "")
-        overview_message, direction_message, artifacts_message, plan_message = default_dashboard_messages()
+        set_mode_decorations(pipeline_mode_var.get())
+        overview_message, direction_message, artifacts_message, plan_message = default_dashboard_messages(
+            mode=pipeline_mode_var.get()
+        )
         set_output_text(overview_text, overview_message)
         set_output_text(direction_text, direction_message)
         set_output_text(artifacts_text, artifacts_message)
@@ -946,6 +986,16 @@ def launch_gui(
     process_queue()
     auto_refresh_pulse()
     recent_runs_box.bind("<<ComboboxSelected>>", lambda _event: handle_load_selected())
+
+    def _on_mode_selected(_event=None) -> None:
+        new_mode = pipeline_mode_var.get()
+        if on_mode_change is not None:
+            on_mode_change(new_mode)
+        mode_label = "조사" if new_mode == "research" else "코딩"
+        busy_var.set(f"파이프라인 모드: {mode_label}")
+        set_mode_decorations(new_mode)
+
+    mode_combo.bind("<<ComboboxSelected>>", _on_mode_selected)
     root.mainloop()
 
 
