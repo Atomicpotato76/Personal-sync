@@ -411,6 +411,7 @@ class ClaudeClient:
         self.max_tokens = config.get("max_tokens", 4096)
         self.temperature = config.get("temperature", 0.7)
         self.top_p = config.get("top_p", 1.0)
+        self.top_k = config.get("top_k", -1)
         self.thinking_budget = config.get("thinking_budget", 10000)
         self.prefer_subscription = config.get("prefer_subscription", True)
         # 작업별 모델 오버라이드 (opus/sonnet 분리)
@@ -507,7 +508,7 @@ class ClaudeClient:
         """Anthropic API로 호출 (토큰 과금).
 
         use_thinking: True면 extended thinking 활성화 (심화 분석 작업에 사용).
-        파라미터는 config에서 읽음 (temperature, top_p, thinking_budget, max_tokens).
+        파라미터는 config에서 읽음 (temperature, top_p, top_k, thinking_budget, max_tokens).
         """
         api_key = get_env_value("ANTHROPIC_API_KEY")
         if not api_key:
@@ -531,14 +532,19 @@ class ClaudeClient:
 
             # extended thinking 활성화
             if use_thinking and self.thinking_enabled:
-                budget_tokens = min(self.thinking_budget, max(self.max_tokens - 1024, 1))
-                if budget_tokens != self.thinking_budget:
+                min_thinking_budget = 1024
+                budget_tokens = min(self.thinking_budget, self.max_tokens - 1024)
+                if budget_tokens <= min_thinking_budget:
                     logger.warning(
-                        "Claude thinking budget 조정: requested=%s applied=%s max_tokens=%s",
-                        self.thinking_budget,
+                        "thinking_budget이 너무 작음 (calculated=%d, min=%d). "
+                        "max_tokens=%d가 thinking에 불충분할 수 있음. "
+                        "thinking 비활성화하고 일반 모드로 전환.",
                         budget_tokens,
+                        min_thinking_budget,
                         self.max_tokens,
                     )
+                    return self._call_api(prompt, system, use_thinking=False)
+
                 kwargs["thinking"] = {
                     "type": "enabled",
                     "budget_tokens": budget_tokens,
@@ -551,6 +557,8 @@ class ClaudeClient:
                 kwargs["temperature"] = self.temperature
                 if self.top_p < 1.0:
                     kwargs["top_p"] = self.top_p
+                if self.top_k > 0:
+                    kwargs["top_k"] = self.top_k
 
             message = client.messages.create(**kwargs)
 
