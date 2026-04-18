@@ -64,11 +64,13 @@ llm:
     top_p: 1.0                   # nucleus sampling
     prefer_subscription: true    # Claude Code CLI(구독) 우선 사용
   # 작업별 라우팅
-  router:
-    enabled: true
-    mode: "http"
+ mode: "http"
     project_path: "C:/Users/skyhu/Documents/AI_projects/gateway_router"
-    server_url: "http://100.78.18.95:8000"
+    server_url: "http://100.78.18.95:8000"router:
+    enabled: true
+    mode: "import"
+    project_path: "C:/Users/skyhu/Documents/AI_projects/pbl-router-v4"
+    server_url: "http://localhost:8000"
     profile: "study"
     preset: ""
     timeout: 180
