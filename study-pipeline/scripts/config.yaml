@@ -62,6 +62,8 @@ llm:
     max_tokens: 16384
     temperature: 0.3             # API 호출 시 temperature (thinking 모드에서는 자동 1.0)
     top_p: 1.0                   # nucleus sampling
+    top_k: -1                    # -1: 비활성, 양수면 API에 전달
+    thinking_budget: 10000       # extended thinking budget tokens
     prefer_subscription: true    # Claude Code CLI(구독) 우선 사용
   # 작업별 라우팅
   router:

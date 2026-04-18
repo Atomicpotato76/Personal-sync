@@ -150,3 +150,83 @@ def test_json_repair_already_valid():
     valid = '{"a": 1, "b": [1, 2, 3]}'
     repaired = _repair_json(valid)
     assert json.loads(repaired) == {"a": 1, "b": [1, 2, 3]}
+
+
+# ──────────────────────────────────────────────
+# ClaudeClient - top_k / thinking budget safety
+# ──────────────────────────────────────────────
+
+def _make_claude_client(**overrides):
+    from llm_router import ClaudeClient
+    cfg = {
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 4096,
+        "temperature": 0.3,
+        "top_p": 1.0,
+        "top_k": -1,
+        "thinking_budget": 10000,
+        "prefer_subscription": False,
+    }
+    cfg.update(overrides)
+    return ClaudeClient(cfg, model_info=None)
+
+
+def _setup_anthropic_mock():
+    captured = {}
+
+    def fake_create(**kwargs):
+        captured.update(kwargs)
+        block = MagicMock()
+        block.type = "text"
+        block.text = "ok"
+        msg = MagicMock()
+        msg.content = [block]
+        return msg
+
+    anthropic_mock = MagicMock()
+    anthropic_mock.Anthropic.return_value.messages.create.side_effect = fake_create
+    return anthropic_mock, captured
+
+
+def test_claude_init_loads_top_k_from_config():
+    client = _make_claude_client(top_k=27)
+    assert client.top_k == 27
+
+
+def test_claude_call_api_adds_top_k_in_non_thinking_mode():
+    client = _make_claude_client(top_k=17)
+    anthropic_mock, captured_kwargs = _setup_anthropic_mock()
+
+    with patch("llm_router.get_env_value", return_value="fake-key"), \
+         patch.dict(sys.modules, {"anthropic": anthropic_mock}):
+        assert client._call_api("hello", use_thinking=False) == "ok"
+
+    assert captured_kwargs.get("top_k") == 17
+
+
+def test_claude_call_api_does_not_add_top_k_in_thinking_mode():
+    client = _make_claude_client(top_k=19, max_tokens=4096, thinking_budget=2000)
+    anthropic_mock, captured_kwargs = _setup_anthropic_mock()
+
+    with patch("llm_router.get_env_value", return_value="fake-key"), \
+         patch.dict(sys.modules, {"anthropic": anthropic_mock}):
+        assert client._call_api("hello", use_thinking=True) == "ok"
+
+    assert "thinking" in captured_kwargs
+    assert "top_k" not in captured_kwargs
+    assert captured_kwargs.get("temperature") == 1
+
+
+def test_claude_thinking_fallback_when_budget_too_small():
+    client = _make_claude_client(max_tokens=2048, thinking_budget=10000, top_k=23, top_p=0.9)
+    anthropic_mock, captured_kwargs = _setup_anthropic_mock()
+
+    with patch("llm_router.get_env_value", return_value="fake-key"), \
+         patch.dict(sys.modules, {"anthropic": anthropic_mock}):
+        assert client._call_api("hello", use_thinking=True) == "ok"
+
+    # thinking budget가 최소 기준 미달이면 일반 모드로 fallback
+    assert "thinking" not in captured_kwargs
+    assert captured_kwargs.get("temperature") == 0.3
+    assert captured_kwargs.get("top_p") == 0.9
+    assert captured_kwargs.get("top_k") == 23
