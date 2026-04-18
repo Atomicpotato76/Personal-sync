@@ -17,7 +17,7 @@ if sys.stdin.encoding != "utf-8":
 import yaml
 
 from memory_manager import MemoryManager
-from path_utils import get_study_paths
+from path_utils import get_study_paths, apply_env_path_overrides
 from quiz_store import approve_quiz, find_quiz_json, load_quiz_json, save_quiz_json
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -29,7 +29,7 @@ def load_config() -> dict:
         print(f"[ERROR] config.yaml을 찾을 수 없습니다: {CONFIG_PATH}")
         sys.exit(1)
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return apply_env_path_overrides(yaml.safe_load(f) or {})
 
 
 def refresh_hermes(config: dict, reason: str) -> None:

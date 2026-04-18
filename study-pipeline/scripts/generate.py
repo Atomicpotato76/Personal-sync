@@ -20,7 +20,7 @@ if sys.stdin.encoding != "utf-8":
 
 import yaml
 
-from path_utils import get_study_paths
+from path_utils import get_study_paths, apply_env_path_overrides
 
 # ── 경로 설정 ──────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -48,7 +48,7 @@ def load_config() -> dict:
         print(f"[ERROR] config.yaml을 찾을 수 없습니다: {CONFIG_PATH}")
         sys.exit(1)
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return apply_env_path_overrides(yaml.safe_load(f) or {})
 
 # ── 텍스트 추출 ────────────────────────────────────────────
 def extract_text(file_path: Path) -> str | None:

@@ -22,7 +22,7 @@ PAPER_CACHE_TTL_DAYS = 30
 
 import requests
 
-from path_utils import get_study_paths
+from path_utils import get_study_paths, apply_env_path_overrides
 
 logger = logging.getLogger("pipeline")
 
@@ -296,7 +296,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     config_path = SCRIPT_DIR / "config.yaml"
     with open(config_path, encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+        config = apply_env_path_overrides(yaml.safe_load(f) or {})
 
     query = " ".join(sys.argv[1:])
     papers = fetch_papers(query, config, max_papers=3)

@@ -22,7 +22,7 @@ if sys.stdout.encoding != "utf-8":
 
 import yaml
 
-from path_utils import get_study_paths
+from path_utils import get_study_paths, apply_env_path_overrides
 
 # ── 경로 설정 ──────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -34,7 +34,7 @@ EXCLUDED_OUTPUT_FOLDERS = frozenset({"퀴즈", "정리"})
 
 def load_config() -> dict:
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return apply_env_path_overrides(yaml.safe_load(f) or {})
 
 
 # ── 오늘 수정된 파일 수집 ──────────────────────────────────

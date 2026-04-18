@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ruamel.yaml import YAML
+from path_utils import apply_env_path_overrides
 
 
 _yaml = YAML()
@@ -16,7 +17,7 @@ _yaml.width = 120
 def load_config(config_path: Path) -> dict:
     """config.yaml을 dict로 로드 (ruamel로 주석 보존 구조체)."""
     with open(config_path, encoding="utf-8") as f:
-        return _yaml.load(f)
+        return apply_env_path_overrides(_yaml.load(f) or {})
 
 
 def save_config(config_path: Path, data: dict, backup: bool = True) -> str | None:

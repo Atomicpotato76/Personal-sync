@@ -18,7 +18,7 @@ import yaml
 from watchdog.events import FileSystemEventHandler, FileCreatedEvent
 from watchdog.observers import Observer
 
-from path_utils import get_study_paths
+from path_utils import get_study_paths, apply_env_path_overrides
 
 # ── 경로 설정 ──────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -29,7 +29,7 @@ EVENT_DEBOUNCE_SECONDS = 5.0
 
 def load_config() -> dict:
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return apply_env_path_overrides(yaml.safe_load(f) or {})
 
 
 def setup_logging(log_dir: Path) -> logging.Logger:
@@ -157,7 +157,7 @@ class NoteCreatedHandler(FileSystemEventHandler):
             import yaml
             config_path = SCRIPT_DIR / "config.yaml"
             with open(config_path, encoding="utf-8") as f:
-                config = yaml.safe_load(f)
+                config = apply_env_path_overrides(yaml.safe_load(f) or {})
             paths = get_study_paths(config)
             cache_dir = paths.cache / "papers" / "marker_cache"
             text = convert_with_fallback(file_path, cache_dir, config=config)

@@ -21,6 +21,8 @@ import os
 import sys
 from pathlib import Path
 
+from path_utils import apply_env_path_overrides
+
 # ── 경로 설정 ──
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -41,8 +43,9 @@ CONFIG_PATH = Path(
 
 def _load_config() -> dict:
     import yaml
+
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return apply_env_path_overrides(yaml.safe_load(f) or {})
 
 # ══════════════════════════════════════════════════════════════
 # MCP Server
