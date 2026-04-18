@@ -28,6 +28,8 @@ if sys.stdout.encoding != "utf-8":
 
 import yaml
 
+import discord_notifier
+
 from path_utils import get_study_paths, get_subject_dir, apply_env_path_overrides
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -700,6 +702,7 @@ def process_note(note_path: Path, config: dict, logger: logging.Logger, pretest_
         return False
 
     note_name = note_path.name
+    discord_notifier.pipeline_start("study-pipeline", note_name)
     print(f"\n  과목: {subject} | 파일: {note_name}")
     print(f"  {'─'*50}")
 
@@ -731,6 +734,7 @@ def process_note(note_path: Path, config: dict, logger: logging.Logger, pretest_
     synthesis = build_synthesis(sources, subject, config, logger)
     if synthesis is None:
         log_error(logger, f"종합 정리 생성 실패: {note_path}")
+        discord_notifier.pipeline_error("study-pipeline", "종합 정리 생성 실패", note_name)
         return False
 
     log_step(logger, 7, "심화 분석")
@@ -759,6 +763,7 @@ def process_note(note_path: Path, config: dict, logger: logging.Logger, pretest_
     refresh_hermes_schedule(config, "synthesis_completed", logger)
 
     logger.info(f"[DONE] v3 종합 완료: {subject}/{note_name}")
+    discord_notifier.pipeline_complete("study-pipeline", f"{len(synthesis)}자 정리노트 생성", note_name)
     print(f"\n  {'═'*50}")
     print(f"  ✓ 파이프라인 완료: {subject}/{note_name}")
     return True
@@ -853,6 +858,7 @@ def process_sources(
     refresh_hermes_schedule(config, "sources_completed", logger)
 
     logger.info(f"[DONE] 소스 직접 선택 완료: {subject}/{note_name}")
+    discord_notifier.pipeline_complete("study-pipeline", f"소스 직접선택 완료", note_name)
     print(f"\n  {'═'*50}")
     print(f"  ✓ 파이프라인 완료: {subject}/{note_name}")
     return True
