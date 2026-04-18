@@ -161,7 +161,7 @@ pubmed:
   max_papers: 3
   search_scope: "recent_5y"
   language: "english"
-  email: ""                # NCBI Entrez 필수 (아무 이메일)
+  email: "skyhuman13@gmail.com"  # NCBI Entrez 필수
 
 # ── 이미지 파이프라인 (v2) ──
 image_pipeline:
