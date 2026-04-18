@@ -68,7 +68,7 @@ llm:
     enabled: true
     mode: "http"
     project_path: "C:/Users/skyhu/Documents/AI_projects/gateway_router"
-    server_url: "http://100.78.18.95:8000"
+    server_url: "http://100.67.163.118:8000"
     profile: "study"
     preset: ""
     timeout: 180
