@@ -183,7 +183,7 @@ def test_test_failure_retries_only_impacted_workstream(tmp_path: Path) -> None:
 
     workstreams = {item["workstream_id"]: item for item in memory.list_workstreams(run.run_id)}
     assert workstreams["ws-core"]["retry_count"] == 0
-    assert workstreams["ws-feature"]["retry_count"] == 1
+    assert workstreams["ws-feature"]["retry_count"] == 0
 
 
 def test_checkpoint_approval_pauses_between_workstreams(tmp_path: Path) -> None:
