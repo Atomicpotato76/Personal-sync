@@ -94,7 +94,11 @@ class ExternalRouterClient:
     def __init__(self, config: dict):
         self.enabled = bool(config.get("enabled", False))
         self.mode = config.get("mode", "import")
-        self.project_path = os.environ.get("PBL_ROUTER_PATH", config.get("project_path", ""))
+        self.project_path = (
+            os.environ.get("PBL_ROUTER_DIR")
+            or os.environ.get("PBL_ROUTER_PATH")
+            or config.get("project_path", "")
+        )
         self.server_url = os.environ.get("PBL_ROUTER_URL", config.get("server_url", "http://localhost:8000")).rstrip("/")
         self.profile = config.get("profile", "study")
         self.preset = config.get("preset", "")

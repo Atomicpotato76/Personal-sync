@@ -15,13 +15,15 @@ from pathlib import Path
 
 import yaml
 
+from path_utils import apply_env_path_overrides
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "config.yaml"
 
 
 def load_config() -> dict:
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return apply_env_path_overrides(yaml.safe_load(f) or {})
 
 
 def load_weak(config: dict) -> dict:

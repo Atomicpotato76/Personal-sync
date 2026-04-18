@@ -16,7 +16,7 @@ from typing import Optional
 
 import yaml
 
-from path_utils import get_study_paths
+from path_utils import get_study_paths, apply_env_path_overrides
 
 logger = logging.getLogger("pipeline")
 
@@ -26,7 +26,7 @@ CONFIG_PATH = SCRIPT_DIR / "config.yaml"
 
 def load_config() -> dict:
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return apply_env_path_overrides(yaml.safe_load(f) or {})
 
 
 # ══════════════════════════════════════════════════════════════

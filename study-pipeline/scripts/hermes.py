@@ -13,6 +13,8 @@ if sys.stdout.encoding != "utf-8":
 
 import yaml
 
+from path_utils import apply_env_path_overrides
+
 from agents.hermes_agent import HermesAgent
 from hermes_store import HermesStore
 
@@ -22,7 +24,7 @@ CONFIG_PATH = SCRIPT_DIR / "config.yaml"
 
 def load_config() -> dict:
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return apply_env_path_overrides(yaml.safe_load(f) or {})
 
 
 def print_plan(plan: dict) -> None:

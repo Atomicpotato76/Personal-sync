@@ -22,6 +22,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from path_utils import get_study_paths, apply_env_path_overrides
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "config.yaml"
 
@@ -35,7 +37,7 @@ except ImportError:
 def load_config() -> dict:
     import yaml
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return apply_env_path_overrides(yaml.safe_load(f) or {})
 
 
 def load_weak(pipeline_dir: Path) -> dict:
@@ -170,7 +172,6 @@ def main():
         sys.exit(1)
 
     config = load_config()
-    from path_utils import get_study_paths
     pipeline_dir = get_study_paths(config).pipeline
 
     print(f"대상: {pipeline_dir / 'weak_concepts.json'}")

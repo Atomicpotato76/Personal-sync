@@ -28,7 +28,7 @@ if sys.stdout.encoding != "utf-8":
 
 import yaml
 
-from path_utils import get_study_paths, get_subject_dir
+from path_utils import get_study_paths, get_subject_dir, apply_env_path_overrides
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "config.yaml"
@@ -37,7 +37,7 @@ TOTAL_STEPS = 10
 
 def load_config() -> dict:
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return apply_env_path_overrides(yaml.safe_load(f) or {})
 
 
 def setup_logging(log_dir: Path) -> logging.Logger:
