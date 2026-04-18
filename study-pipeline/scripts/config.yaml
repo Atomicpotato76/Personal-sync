@@ -49,19 +49,18 @@ llm:
   tertiary: "claude"
   lmstudio:
     base_url: "http://100.78.18.95:1234"    # desktop-gd0g485 via Tailscale
-    model: "gemma-4-e4b-uncensored-hauhaucs-aggressive"
+    model: "gemma-4-e4b"
     timeout: 180           # 26B 모델이므로 넉넉하게
   chatgpt:
     model: "gpt-5.4"             # API 호출 시 사용할 모델
-    max_tokens: 4096
+    max_tokens: 16384
     temperature: 0.3
     prefer_subscription: true    # Codex CLI(구독) 우선 사용
   claude:
-    model: "claude-sonnet-4-20250514"  # API fallback 시 사용할 모델
+    model: "claude-sonnet-4-6"  # API fallback 시 사용할 모델
     cli_model: "sonnet"          # CLI 기본 모델 (할당량 절약)
-    max_tokens: 4096
-    temperature: 0.7             # API 호출 시 temperature (thinking 모드에서는 자동 1.0)
-    thinking_budget: 10000       # extended thinking 토큰 예산
+    max_tokens: 16384
+    temperature: 0.3             # API 호출 시 temperature (thinking 모드에서는 자동 1.0)
     top_p: 1.0                   # nucleus sampling
     prefer_subscription: true    # Claude Code CLI(구독) 우선 사용
   # 작업별 라우팅
@@ -120,13 +119,13 @@ mem0:
   vector_store:
     mode: "remote"                              # "remote" = 데스크톱 Chroma 서버 | "local" = 로컬 파일
     host: "100.78.18.95"                        # Tailscale IP
-    port: 8000                                  # Chroma 서버 포트
+    port: 8001                                  # Chroma 서버 포트
     collection: "study_memory"
     local_path: "C:/Users/skyhu/Documents/AI_projects/study-pipeline/cache/mem0"  # fallback
   # LLM — mem0 내부 요약/추론용 (LM Studio via Tailscale)
   llm:
     provider: "lmstudio"
-    model: "gemma-4-e4b-uncensored-hauhaucs-aggressive"
+    model: "gemma-4-e4b"
     base_url: "http://100.78.18.95:1234/v1"
     api_key: "lm-studio"
   # Embedder — 벡터 검색용 (LM Studio via Tailscale)
@@ -172,7 +171,7 @@ image_pipeline:
 output:
   md:
     vault_inject: true
-    include_pubmed: true
+    include_pubmed: false
     terminology: "english_first"
   pdf:
     engine: "weasyprint"
@@ -194,14 +193,27 @@ subjects:
     slides_dir: "PDF/"
     slide_pattern: "Chapter *.pdf"
     textbook_chapter_pages:
-      ch1: [1, 50]
-      ch2: [51, 100]
-      ch3: [101, 150]
-      ch4: [151, 200]
-      ch5: [201, 250]
-    pubmed_keywords:
-    - organic reaction mechanism
-    - alkene addition
+      ch1: [20, 56]
+      ch2: [57, 96]
+      ch3: [97, 130]
+      ch4: [131, 173]
+      ch5: [174, 207]
+      ch6: [208, 240]
+      ch7: [241, 274]
+      ch8: [275, 312]
+      ch9: [313, 343]
+      ch10: [344, 390]
+      ch11: [391, 422]
+      ch12: [423, 451]
+      ch13: [452, 487]
+      ch14: [488, 521]
+      ch15: [522, 556]
+      ch16: [557, 589]
+      ch17: [590, 616]
+      appendix: [617, 663]
+      index: [664, 677]
+    pubmed_keywords: []
+
   genomics_ai:
     folder: "유전체학과 AI"
     template: "templates/genomics_ai.txt"
@@ -211,10 +223,8 @@ subjects:
     textbook:
     slides_dir: "PDF/"
     slide_pattern: "강의 *.pdf"
-    pubmed_keywords:
-    - genomics
-    - bioinformatics
-    - AI drug discovery
+    pubmed_keywords: []
+  
   mycology:
     folder: "응용균학"
     template: "templates/mycology.txt"
@@ -224,7 +234,5 @@ subjects:
     textbook:
     slides_dir: "PDF/"
     slide_pattern: "Chapter *.pdf"
-    pubmed_keywords:
-    - applied mycology
-    - fungal pathogenesis
-    - mycorrhiza
+    pubmed_keywords: []
+
