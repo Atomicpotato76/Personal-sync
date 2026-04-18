@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import time
 from pathlib import Path
@@ -16,6 +17,81 @@ from path_utils import get_study_paths
 logger = logging.getLogger("pipeline")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+_KEYWORD_MODEL = "gpt-5.4"
+
+
+def generate_pubmed_keywords(text: str) -> list[str]:
+    """노트/슬라이드 텍스트에서 PubMed용 정밀 키워드 3~5개를 GPT로 생성."""
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        logger.warning("OPENAI_API_KEY 없음: 동적 PubMed 키워드 생성을 건너뜀")
+        return []
+
+    input_text = text.strip()
+    if not input_text:
+        return []
+
+    try:
+        from openai import OpenAI
+    except ImportError:
+        logger.warning("openai 패키지 미설치: 동적 PubMed 키워드 생성 불가")
+        return []
+
+    system_prompt = (
+        "You are a biomedical search strategist for PubMed. "
+        "Extract 3-5 narrow and specific biomedical search keywords/phrases from the input text. "
+        "Avoid broad generic terms. Prefer concrete disease names, pathways, biomarkers, "
+        "interventions, methods, or molecular targets that will improve PubMed precision. "
+        "Return ONLY a JSON array of strings."
+    )
+
+    user_prompt = (
+        "Generate 3-5 precise PubMed keywords from this study note/slide content:\n\n"
+        f"{input_text[:12000]}"
+    )
+
+    try:
+        client = OpenAI(api_key=api_key, timeout=60.0)
+        response = client.chat.completions.create(
+            model=_KEYWORD_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_completion_tokens=300,
+            temperature=0.2,
+        )
+        raw = (response.choices[0].message.content or "").strip()
+        if not raw:
+            return []
+
+        # 우선 JSON 배열 파싱
+        keywords: list[str] = []
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                keywords = [str(k).strip() for k in parsed if str(k).strip()]
+        except Exception:
+            # fallback: 줄바꿈/쉼표 분리
+            chunks = re.split(r"[\n,;]+", raw)
+            keywords = [c.strip(" -•\t\"'") for c in chunks if c.strip()]
+
+        deduped: list[str] = []
+        seen = set()
+        for kw in keywords:
+            key = kw.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(kw)
+            if len(deduped) >= 5:
+                break
+        if len(deduped) < 3:
+            return deduped
+        return deduped
+    except Exception as e:
+        logger.warning(f"PubMed 동적 키워드 생성 실패: {e}")
+        return []
 
 
 def _get_cache_dir(config: dict) -> Path:
@@ -150,8 +226,23 @@ def _fill_citation_counts(results: list[dict], Entrez) -> None:
 
 def extract_keywords_from_note(note_text: str, subject: str, config: dict) -> str:
     """노트 텍스트에서 PubMed 검색 키워드 추출. OR 기반으로 완화."""
+    global _KEYWORD_MODEL
+
     subject_cfg = config["subjects"].get(subject, {})
     base_keywords = subject_cfg.get("pubmed_keywords", [])
+    pubmed_cfg = config.get("pubmed", {})
+
+    # 1) static override 우선
+    if base_keywords:
+        return " OR ".join(f'"{k}"' for k in base_keywords[:5])
+
+    # 2) dynamic keyword generation
+    chatgpt_cfg = config.get("llm", {}).get("chatgpt", {})
+    _KEYWORD_MODEL = chatgpt_cfg.get("model", _KEYWORD_MODEL)
+    if pubmed_cfg.get("dynamic_keywords", True):
+        dynamic_keywords = generate_pubmed_keywords(note_text)
+        if dynamic_keywords:
+            return " OR ".join(f'"{k}"' for k in dynamic_keywords)
 
     # 노트에서 영문 키워드 추출 (2단어 이상 영문 구)
     english_terms = re.findall(r"[A-Za-z][a-z]+(?: [A-Za-z][a-z]+)+", note_text)
@@ -164,13 +255,7 @@ def extract_keywords_from_note(note_text: str, subject: str, config: dict) -> st
     top_terms = sorted(term_counts, key=term_counts.get, reverse=True)[:3]
 
     # 검색 전략: base 키워드 1개 AND (노트 키워드 OR 조합)
-    if base_keywords and top_terms:
-        base = base_keywords[0]
-        note_part = " OR ".join(f'"{t}"' for t in top_terms)
-        return f"({base}) AND ({note_part})"
-    elif base_keywords:
-        return " OR ".join(f'"{k}"' for k in base_keywords[:3])
-    elif top_terms:
+    if top_terms:
         return " OR ".join(f'"{t}"' for t in top_terms)
     return ""
 

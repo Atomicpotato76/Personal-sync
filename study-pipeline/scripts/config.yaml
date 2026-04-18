@@ -155,6 +155,7 @@ papers:
 # ── PubMed 설정 (v3) ──
 pubmed:
   enabled: true
+  dynamic_keywords: true
   max_papers: 3
   search_scope: "recent_5y"
   language: "english"
@@ -235,4 +236,3 @@ subjects:
     slides_dir: "PDF/"
     slide_pattern: "Chapter *.pdf"
     pubmed_keywords: []
-
