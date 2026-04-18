@@ -1,0 +1,85 @@
+﻿# ═══════════════════════════════════════
+# 환경변수 · 비밀 (API 키 보호)
+# ═══════════════════════════════════════
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets.yaml
+
+# ═══════════════════════════════════════
+# Python 가상환경 · 빌드
+# ═══════════════════════════════════════
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# ═══════════════════════════════════════
+# study-pipeline 전용
+# ═══════════════════════════════════════
+study-pipeline/cache/
+study-pipeline/output/
+study-pipeline/queue/
+study-pipeline/approved/
+study-pipeline/rejected/
+study-pipeline/weak_concepts.json
+study-pipeline/learning_history.json
+study-pipeline/scripts_audit_*.zip
+study-pipeline/scripts/NotoSansKR-*.ttf
+study-pipeline/scripts/test_output.pdf
+study-pipeline/scripts/config_backups/
+study-pipeline/logs/
+
+# Hermes 개인 일정
+**/hermes_state.json
+**/exam_calendar.json
+**/study_schedule.json
+**/schedule_profile.json
+
+# ═══════════════════════════════════════
+# 대용량 · 재생성 가능
+# ═══════════════════════════════════════
+*.pdf
+!**/templates/**/*.pdf
+**/cache/
+
+# ═══════════════════════════════════════
+# IDE · 편집기
+# ═══════════════════════════════════════
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# ═══════════════════════════════════════
+# OS
+# ═══════════════════════════════════════
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ═══════════════════════════════════════
+# 임시 · 로그 · 백업
+# ═══════════════════════════════════════
+*.log
+*.bak
+*.backup
+pipeline.log
+
+# ═══════════════════════════════════════
+# mem0 · vector store
+# ═══════════════════════════════════════
+**/mem0/
+chroma_db/
+
+# ═══════════════════════════════════════
+# pytest
+# ═══════════════════════════════════════
+.pytest_cache/

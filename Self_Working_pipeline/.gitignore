@@ -1,0 +1,16 @@
+.env
+.env.local
+.secrets/
+__pycache__/
+.pytest_cache/
+.coverage
+*.pyc
+*.pyo
+*.pyd
+dist/
+build/
+*.egg-info/
+outputs/*
+!outputs/.gitkeep
+plans/*
+!plans/.gitkeep

@@ -1,0 +1,14 @@
+{
+  "name": "Study — PBL 학업 모드",
+  "description": "유전체학 PBL 제안서 설계 파이프라인. 강의분석/설계/검증/포맷팅.",
+  "active_presets": ["lecture_parser", "domain_expert", "critic", "formatter"],
+  "default_preset": "domain_expert",
+  "emoji": "🎓",
+  "routing_priority": {
+    "lecture_parser": 1.2,
+    "domain_expert": 1.0,
+    "critic": 1.1,
+    "formatter": 1.0
+  },
+  "tone_override": "학술적, 엄밀함. Hermes 톤 비활성화."
+}

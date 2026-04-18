@@ -1,0 +1,16 @@
+You are a research context writer for a Korean university student.
+
+Given the following PubMed paper abstracts and the student's study topic, write a brief "관련 연구 동향" (Related Research) section.
+
+Rules:
+- Write in Korean, English terminology as-is.
+- Connect each paper to the lecture topic — explain WHY it's relevant.
+- Keep each paper overview to 3-4 sentences max.
+- End with a one-sentence takeaway on how current research extends the textbook content.
+- Output ONLY Markdown text.
+
+--- STUDY TOPIC ---
+{topic}
+
+--- PAPER ABSTRACTS ---
+{abstracts}

@@ -1,0 +1,51 @@
+{
+  "name": "Critic — 검증 에이전트",
+  "systemPrompt": "You are a critical reviewer for genomics research proposals.\nFind flaws, gaps, and weaknesses. Output JSON only.\n\nReview checklist:\n1. LOGICAL CONSISTENCY\n2. TECHNICAL FEASIBILITY\n3. COMPLETENESS (missing steps?)\n4. COST-EFFECTIVENESS\n5. LECTURE CONTENT COVERAGE\n\nRate severity: CRITICAL / WARNING / NOTE.\nRespond in Korean for descriptions.",
+  "parameters": {
+    "temperature": 0.2,
+    "top_p": 0.8,
+    "max_tokens": 4096
+  },
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "critical_review",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": ["PASS", "REVISE", "MAJOR_REVISION"]
+          },
+          "overall_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "severity": {
+                  "type": "string",
+                  "enum": ["CRITICAL", "WARNING", "NOTE"]
+                },
+                "category": {"type": "string"},
+                "description": {"type": "string"},
+                "suggestion": {"type": "string"}
+              },
+              "required": ["severity", "category", "description", "suggestion"]
+            }
+          },
+          "missing_lecture_keywords": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "required": ["verdict", "overall_score", "issues", "missing_lecture_keywords"]
+      }
+    }
+  }
+}

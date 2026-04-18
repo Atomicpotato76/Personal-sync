@@ -1,0 +1,36 @@
+# ══════════════════════════════════════════════════════════════
+# Study Pipeline v3 — Dependencies
+# ══════════════════════════════════════════════════════════════
+
+# ── 기본 (v2 호환) ──
+pyyaml
+requests
+pdfplumber
+pymupdf
+reportlab
+Pillow
+biopython           # PubMed Entrez API
+watchdog            # 파일 감시
+python-pptx         # PPTX 파싱
+
+# ── v3 신규: LLM 클라이언트 ──
+anthropic           # Claude API
+openai              # ChatGPT API
+
+# ── v3 신규: 고급 PDF 파싱 ──
+marker-pdf          # PDF→Markdown 변환 (로컬, GPU 가속)
+
+# ── v3 신규: 학습 메모리 ──
+mem0ai              # mem0 학습 이력 관리
+fsrs>=6.0           # FSRS 간격반복 스케줄러 (scheduler: fsrs 시 필요)
+
+# ── v3 신규: 논문 검색 ──
+semanticscholar     # Semantic Scholar API
+
+# ── 개발/테스트 ──
+pytest
+pytest-cov
+
+# ── 선택적 (GPU 가속 시) ──
+# torch              # marker-pdf GPU 가속
+# torchvision

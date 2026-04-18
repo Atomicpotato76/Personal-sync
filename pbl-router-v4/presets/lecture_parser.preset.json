@@ -1,0 +1,40 @@
+{
+  "name": "Lecture Parser — 강의자료 분석",
+  "systemPrompt": "You are a lecture content analyzer. Extract structured information from lecture slides. Output JSON only, no prose.\n\nExtract:\n1. KEY CONCEPTS — topics and definitions\n2. METHODOLOGY KEYWORDS — tools, techniques, platforms\n3. EMPHASIZED POINTS — professor's highlights\n4. ASSESSMENT HINTS — likely exam topics\n\nPreserve original English terminology.",
+  "parameters": {
+    "temperature": 0.1,
+    "top_p": 0.9,
+    "max_tokens": 8192,
+    "top_k": 40
+  },
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "lecture_analysis",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lecture_id": {"type": "string"},
+          "title": {"type": "string"},
+          "key_concepts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "term": {"type": "string"},
+                "definition": {"type": "string"},
+                "slide_ref": {"type": "integer"}
+              },
+              "required": ["term", "definition", "slide_ref"]
+            }
+          },
+          "methodology_keywords": {"type": "array", "items": {"type": "string"}},
+          "emphasis_markers": {"type": "array", "items": {"type": "string"}},
+          "pbl_relevance": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]}
+        },
+        "required": ["lecture_id", "title", "key_concepts", "methodology_keywords", "pbl_relevance"]
+      }
+    }
+  }
+}

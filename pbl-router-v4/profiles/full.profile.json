@@ -1,0 +1,15 @@
+{
+  "name": "Full — 통합 모드",
+  "description": "모든 프리셋 활성. 자유롭게 맥락 전환.",
+  "active_presets": ["hermes", "lecture_parser", "domain_expert", "critic", "formatter"],
+  "default_preset": "hermes",
+  "emoji": "🌐",
+  "routing_priority": {
+    "hermes": 1.0,
+    "lecture_parser": 1.0,
+    "domain_expert": 1.0,
+    "critic": 1.0,
+    "formatter": 1.0
+  },
+  "tone_override": null
+}

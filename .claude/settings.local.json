@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python main.py --skip-gmail)",
+      "Bash(python -c \":*)",
+      "Bash(rm -rf \"C:/Users/skyhu/Documents/Claude_Code_project/daily_report_aggregator/.cache\")",
+      "Bash(python -c ':*)",
+      "Read(//c/Users/skyhu/Downloads/**)",
+      "Bash(mv 0.6__artist_healthyman*.webp 0.8__artist_gaku__*.webp \"1.6__homura subaru__\"*.png \"1.6__homura subaru__\"*.webp \"AI-이미지-프롬프트/생성이미지/\")",
+      "Bash(wsl bash:*)",
+      "Bash(python -c \"import yaml; yaml.safe_load\\(open\\('config.yaml', encoding='utf-8'\\)\\); print\\('config.yaml: valid YAML'\\)\")",
+      "Bash(python generate.py)",
+      "Bash(python review.py)",
+      "Bash(python review.py list)",
+      "Bash(python review.py report)",
+      "Bash(grep -E \"\\\\.\\(py|json|yaml|toml|md\\)$\")"
+    ]
+  }
+}

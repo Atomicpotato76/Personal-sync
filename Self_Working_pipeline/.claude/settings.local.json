@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"C:\\\\\\\\\\\\\\\\Users\" \"/c/Users/skyhu/Documents/AI_projects/Self_Working_pipeline/core/settings.py\")"
+    ]
+  }
+}
