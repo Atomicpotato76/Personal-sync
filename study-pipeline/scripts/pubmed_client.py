@@ -30,6 +30,17 @@ _BIO_PATTERNS = [
     r"\b[A-Z]{2,5}[0-9]*\b",
 ]
 
+_EDU_HINT_PATTERNS = [
+    r"학부",
+    r"입문",
+    r"기초",
+    r"1주차",
+    r"undergraduate",
+    r"introduct",
+    r"fundamental",
+    r"textbook",
+]
+
 
 def _parse_keyword_response(raw: str) -> list[str]:
     """LLM 응답 문자열에서 키워드 배열을 파싱."""
@@ -102,13 +113,29 @@ def generate_pubmed_keywords(text: str, config: dict) -> list[str]:
     if not input_text:
         return []
 
-    system_prompt = (
-        "You are a biomedical search strategist for PubMed. "
-        "Extract 3-5 narrow and specific biomedical search keywords/phrases from the input text. "
-        "Avoid broad generic terms. Prefer concrete disease names, pathways, biomarkers, "
-        "interventions, methods, or molecular targets that will improve PubMed precision. "
-        "Return ONLY a JSON array of strings."
+    audience = str(config.get("pubmed", {}).get("keyword_audience", "auto")).lower()
+    lower_text = input_text.lower()
+    is_intro_note = audience == "undergrad" or (
+        audience == "auto"
+        and any(re.search(pattern, lower_text) for pattern in _EDU_HINT_PATTERNS)
     )
+
+    if is_intro_note:
+        system_prompt = (
+            "You are an educational biomedical search strategist for PubMed. "
+            "Extract 3-5 keyword phrases aligned to undergraduate introductory textbook concepts. "
+            "Prefer foundational mechanisms, canonical terminology, and review-friendly phrasing. "
+            "Avoid highly niche drug-development targets, proprietary compounds, or cutting-edge jargon "
+            "unless clearly central in the input. Return ONLY a JSON array of strings."
+        )
+    else:
+        system_prompt = (
+            "You are a biomedical search strategist for PubMed. "
+            "Extract 3-5 narrow and specific biomedical search keywords/phrases from the input text. "
+            "Avoid broad generic terms. Prefer concrete disease names, pathways, biomarkers, "
+            "interventions, methods, or molecular targets that will improve PubMed precision. "
+            "Return ONLY a JSON array of strings."
+        )
 
     user_prompt = (
         "Generate 3-5 precise PubMed keywords from this study note/slide content:\n\n"
@@ -150,6 +177,8 @@ def search_pubmed(
     max_results: int = 5,
     email: str = "",
     sort_by: str = "citation",
+    min_citations: int = 0,
+    prefer_review: bool = False,
 ) -> list[dict]:
     """PubMed에서 논문 검색 → citation count로 정렬.
 
@@ -215,6 +244,8 @@ def search_pubmed(
             # Abstract
             abstract_parts = art.get("Abstract", {}).get("AbstractText", [])
             abstract = " ".join(str(p) for p in abstract_parts)
+            publication_types = [str(pt) for pt in art.get("PublicationTypeList", [])]
+            is_review = any("review" in pt.lower() for pt in publication_types)
 
             results.append({
                 "pmid": pmid,
@@ -224,6 +255,7 @@ def search_pubmed(
                 "year": year,
                 "abstract": abstract,
                 "citation_count": 0,  # 아래에서 채움
+                "is_review": is_review,
             })
 
         # citation count 가져오기 (elink → cited-by)
@@ -233,6 +265,11 @@ def search_pubmed(
         # 정렬
         if sort_by == "citation":
             results.sort(key=lambda x: x["citation_count"], reverse=True)
+        if prefer_review:
+            results.sort(key=lambda x: (x.get("is_review", False), x["citation_count"]), reverse=True)
+
+        if min_citations > 0:
+            results = [r for r in results if r.get("citation_count", 0) >= min_citations]
 
         return results[:max_results]
 
@@ -320,13 +357,24 @@ def search_and_summarize(subject: str, note_text: str, config: dict) -> Optional
     else:
         max_papers = pubmed_cfg.get("max_papers", 3)
         email = pubmed_cfg.get("email", "")
-        papers = search_pubmed(query, max_papers, email, sort_by="citation")
+        papers = search_pubmed(
+            query,
+            max_papers,
+            email,
+            sort_by="citation",
+            min_citations=int(pubmed_cfg.get("min_citations", 0)),
+            prefer_review=bool(pubmed_cfg.get("prefer_review_first", True)),
+        )
         with open(cache_file, "w", encoding="utf-8") as f:
             json.dump(papers, f, ensure_ascii=False, indent=2)
         print(f"    검색 결과: {len(papers)}편 (citation 순 정렬)")
 
     if not papers:
-        return None
+        return "PubMed 관련 논문 없음 — 생략"
+
+    papers = _filter_irrelevant_papers(papers, note_text, pubmed_cfg)
+    if not papers:
+        return "PubMed 관련 논문 없음 — 생략"
 
     # citation 정보 표시
     for p in papers:
@@ -417,3 +465,44 @@ def _extract_key_findings(text: str) -> str:
             if len(findings) >= 3:
                 break
     return " ".join(findings) if findings else ""
+
+
+def _filter_irrelevant_papers(papers: list[dict], note_text: str, pubmed_cfg: dict) -> list[dict]:
+    """저품질/저관련성 PubMed 결과 필터링."""
+    if not papers:
+        return []
+
+    # 1) 모두 0 citation이면 skip
+    if all(int(p.get("citation_count", 0)) == 0 for p in papers):
+        logger.info("PubMed skip: 모든 후보 citation=0")
+        return []
+
+    # 2) 노트 키워드와 제목/초록 의미 거리(간단 토큰 겹침) 기반 필터
+    if not pubmed_cfg.get("skip_if_semantic_mismatch", True):
+        return papers
+
+    min_overlap = int(pubmed_cfg.get("min_keyword_overlap", 1))
+    note_tokens = _tokenize_for_overlap(note_text)
+
+    filtered: list[dict] = []
+    for paper in papers:
+        paper_text = f"{paper.get('title', '')} {paper.get('abstract', '')}"
+        paper_tokens = _tokenize_for_overlap(paper_text)
+        overlap = len(note_tokens.intersection(paper_tokens))
+        if overlap >= min_overlap:
+            filtered.append(paper)
+
+    if filtered:
+        return filtered
+
+    logger.info("PubMed skip: 노트/논문 키워드 overlap 부족")
+    return []
+
+
+def _tokenize_for_overlap(text: str) -> set[str]:
+    tokens = re.findall(r"[A-Za-z][A-Za-z0-9\-]{2,}", text.lower())
+    return {
+        token
+        for token in tokens
+        if token not in _STOP_KEYWORDS and token not in {"with", "from", "that", "this"}
+    }
