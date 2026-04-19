@@ -6,7 +6,7 @@
 pyyaml
 requests
 pdfplumber
-pymupdf
+pymupdf>=1.27.2.2
 reportlab
 Pillow
 biopython           # PubMed Entrez API

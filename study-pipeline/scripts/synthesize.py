@@ -644,13 +644,31 @@ def append_quiz_sections(
     pretest_text: str = "",
 ) -> tuple[str, bool]:
     """교재 퀴즈 섹션을 추가하고 queue용 자동 퀴즈를 생성."""
+    quiz_cfg = config.get("quiz", {})
+
+    # 3a: 교재 PDF 문제 크롭 (실패해도 graceful fallback)
+    if quiz_cfg.get("prefer_textbook_problems", True):
+        try:
+            from quiz_cropper import crop_textbook_problems
+            from textbook_quiz import _detect_chapter
+
+            chapter = _detect_chapter(sources.get("note_text", ""), config, subject)
+            crop_result = crop_textbook_problems(subject, chapter, config, logger)
+            status = crop_result.get("status")
+            if status == "ok":
+                log_detail(logger, f"교재 문제 크롭 완료: {crop_result.get('count', 0)}건")
+            else:
+                reason = crop_result.get("reason", "unknown")
+                log_warn(logger, f"교재 문제 크롭 fallback: status={status}, reason={reason}")
+        except Exception as e:
+            log_warn(logger, f"교재 문제 크롭 오류(자동 퀴즈로 fallback): {e}")
+
     try:
         from textbook_quiz import add_textbook_quiz_section
 
         synthesis = add_textbook_quiz_section(synthesis, subject, sources["note_text"], config)
     except Exception as e:
-        log_error(logger, f"교재 퀴즈 오류: {e}")
-        return synthesis, False
+        log_warn(logger, f"교재 퀴즈 오류(자동 퀴즈는 계속 진행): {e}")
 
     try:
         from generate import process_content

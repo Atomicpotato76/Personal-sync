@@ -186,6 +186,11 @@ image_pipeline:
     tool: "matplotlib"
     dpi: 150
 
+# ── 퀴즈 설정 (v3.1) ──
+quiz:
+  prefer_textbook_problems: true
+  supplement_gap_only: true
+
 # ── 출력 설정 (v2) ──
 output:
   smoke_mode: false
