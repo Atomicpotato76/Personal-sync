@@ -6,9 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import re
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -17,24 +15,86 @@ from path_utils import get_study_paths
 logger = logging.getLogger("pipeline")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-_KEYWORD_MODEL = "gpt-5.4"
 
 
-def generate_pubmed_keywords(text: str) -> list[str]:
-    """노트/슬라이드 텍스트에서 PubMed용 정밀 키워드 3~5개를 GPT로 생성."""
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        logger.warning("OPENAI_API_KEY 없음: 동적 PubMed 키워드 생성을 건너뜀")
-        return []
+_STOP_KEYWORDS = {
+    "organic chemistry", "biology", "science", "research", "study",
+    "experiment", "method", "analysis", "result", "introduction",
+    "conclusion", "discussion", "review", "article", "paper",
+}
 
-    input_text = text.strip()
-    if not input_text:
+_BIO_PATTERNS = [
+    r"\b[A-Z][a-z]+(?:ase|ine|ose|ide|ate|ol|yl)\b",
+    r"\b(?:DNA|RNA|ATP|NAD|NADH|mRNA|tRNA|PCR|CRISPR)\b",
+    r"\b[A-Z]{2,5}[0-9]*\b",
+]
+
+
+def _parse_keyword_response(raw: str) -> list[str]:
+    """LLM 응답 문자열에서 키워드 배열을 파싱."""
+    cleaned = raw.strip()
+    if not cleaned:
         return []
 
     try:
-        from openai import OpenAI
-    except ImportError:
-        logger.warning("openai 패키지 미설치: 동적 PubMed 키워드 생성 불가")
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    except Exception:
+        pass
+
+    chunks = re.split(r"[\n,;]+", cleaned)
+    return [chunk.strip(" -•\t\"'") for chunk in chunks if chunk.strip()]
+
+
+def _validate_keywords(keywords: list[str]) -> list[str]:
+    """너무 넓거나 무의미한 키워드 필터링."""
+    valid: list[str] = []
+    for kw in keywords:
+        kw_clean = kw.strip()
+        kw_lower = kw_clean.lower()
+        if len(kw_lower) <= 2:
+            continue
+        if kw_lower in _STOP_KEYWORDS:
+            logger.debug(f"키워드 필터링 (too broad): {kw_clean}")
+            continue
+        if kw_lower.replace(" ", "").isdigit():
+            continue
+        valid.append(kw_clean)
+    return valid
+
+
+def _dedupe_keywords(keywords: list[str], max_count: int = 5) -> list[str]:
+    """중복 제거 후 최대 개수 제한."""
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for kw in _validate_keywords(keywords):
+        key = kw.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(kw)
+        if len(deduped) >= max_count:
+            break
+    return deduped
+
+
+def _extract_bio_terms(text: str) -> list[str]:
+    """생의학 용어 패턴 기반 키워드 추출 (regex fallback)."""
+    from collections import Counter
+
+    terms: list[str] = []
+    for pattern in _BIO_PATTERNS:
+        terms.extend(re.findall(pattern, text))
+
+    counts = Counter(term.lower() for term in terms if len(term) > 2)
+    return [term for term, _ in counts.most_common(5)]
+
+
+def generate_pubmed_keywords(text: str, config: dict) -> list[str]:
+    """노트/슬라이드 텍스트에서 PubMed용 정밀 키워드 3~5개를 LLM으로 생성."""
+    input_text = text.strip()
+    if not input_text:
         return []
 
     system_prompt = (
@@ -51,44 +111,18 @@ def generate_pubmed_keywords(text: str) -> list[str]:
     )
 
     try:
-        client = OpenAI(api_key=api_key, timeout=60.0)
-        response = client.chat.completions.create(
-            model=_KEYWORD_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_completion_tokens=300,
-            temperature=0.2,
+        from llm_router import LLMRouter
+
+        router = LLMRouter(config)
+        raw = router.generate(
+            f"{system_prompt}\n\n{user_prompt}",
+            task_type="keyword_extraction",
         )
-        raw = (response.choices[0].message.content or "").strip()
         if not raw:
             return []
 
-        # 우선 JSON 배열 파싱
-        keywords: list[str] = []
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, list):
-                keywords = [str(k).strip() for k in parsed if str(k).strip()]
-        except Exception:
-            # fallback: 줄바꿈/쉼표 분리
-            chunks = re.split(r"[\n,;]+", raw)
-            keywords = [c.strip(" -•\t\"'") for c in chunks if c.strip()]
-
-        deduped: list[str] = []
-        seen = set()
-        for kw in keywords:
-            key = kw.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(kw)
-            if len(deduped) >= 5:
-                break
-        if len(deduped) < 3:
-            return deduped
-        return deduped
+        keywords = _parse_keyword_response(raw)
+        return _dedupe_keywords(keywords, max_count=5)
     except Exception as e:
         logger.warning(f"PubMed 동적 키워드 생성 실패: {e}")
         return []
@@ -122,7 +156,11 @@ def search_pubmed(
         logger.error("biopython 미설치: pip install biopython")
         return []
 
-    Entrez.email = email or "student@example.com"
+    if not email:
+        logger.error("PubMed email 미설정 (config.yaml → pubmed.email 확인)")
+        return []
+
+    Entrez.email = email
 
     try:
         # 검색 (더 많이 가져와서 citation으로 재정렬)
@@ -226,8 +264,6 @@ def _fill_citation_counts(results: list[dict], Entrez) -> None:
 
 def extract_keywords_from_note(note_text: str, subject: str, config: dict) -> str:
     """노트 텍스트에서 PubMed 검색 키워드 추출. OR 기반으로 완화."""
-    global _KEYWORD_MODEL
-
     subject_cfg = config["subjects"].get(subject, {})
     base_keywords = subject_cfg.get("pubmed_keywords", [])
     pubmed_cfg = config.get("pubmed", {})
@@ -237,26 +273,15 @@ def extract_keywords_from_note(note_text: str, subject: str, config: dict) -> st
         return " OR ".join(f'"{k}"' for k in base_keywords[:5])
 
     # 2) dynamic keyword generation
-    chatgpt_cfg = config.get("llm", {}).get("chatgpt", {})
-    _KEYWORD_MODEL = chatgpt_cfg.get("model", _KEYWORD_MODEL)
     if pubmed_cfg.get("dynamic_keywords", True):
-        dynamic_keywords = generate_pubmed_keywords(note_text)
+        dynamic_keywords = generate_pubmed_keywords(note_text, config)
         if dynamic_keywords:
             return " OR ".join(f'"{k}"' for k in dynamic_keywords)
 
-    # 노트에서 영문 키워드 추출 (2단어 이상 영문 구)
-    english_terms = re.findall(r"[A-Za-z][a-z]+(?: [A-Za-z][a-z]+)+", note_text)
-    term_counts = {}
-    for t in english_terms:
-        t_lower = t.lower()
-        if len(t_lower) > 5 and t_lower not in {"the and", "this is", "that is"}:
-            term_counts[t_lower] = term_counts.get(t_lower, 0) + 1
-
-    top_terms = sorted(term_counts, key=term_counts.get, reverse=True)[:3]
-
-    # 검색 전략: base 키워드 1개 AND (노트 키워드 OR 조합)
-    if top_terms:
-        return " OR ".join(f'"{t}"' for t in top_terms)
+    # 3) regex fallback: 생의학 용어 패턴 우선
+    bio_terms = _extract_bio_terms(note_text)
+    if bio_terms:
+        return " OR ".join(f'"{term}"' for term in bio_terms[:5])
     return ""
 
 
@@ -363,7 +388,8 @@ def _enrich_with_fulltext(papers: list[dict], config: dict) -> list[dict]:
         pmid = p.get("pmid")
         if not pmid:
             continue
-        pdf_url = check_pmc_open_access(pmid)
+        pubmed_email = config.get("pubmed", {}).get("email", "")
+        pdf_url = check_pmc_open_access(pmid, email=pubmed_email)
         if not pdf_url:
             continue
         pdf_path = papers_dir / "pdfs" / f"pmid_{pmid}.pdf"
