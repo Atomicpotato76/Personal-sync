@@ -282,6 +282,8 @@ def save_results(
             },
         })
 
+    queue_dir.mkdir(parents=True, exist_ok=True)
+
     json_path = queue_dir / f"{item_id}.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(json_data, f, ensure_ascii=False, indent=2)
