@@ -97,12 +97,15 @@ def search_semantic_scholar(
 # PMC 오픈액세스 PDF 다운로드
 # ══════════════════════════════════════════════════════════════
 
-def check_pmc_open_access(pmid: str) -> Optional[str]:
+def check_pmc_open_access(pmid: str, email: str = "") -> Optional[str]:
     """PubMed ID로 PMC 오픈액세스 PDF URL 확인."""
     try:
+        if not email:
+            logger.warning("PMC ID 변환: email 미설정")
+
         r = requests.get(
             "https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/",
-            params={"ids": pmid, "format": "json", "tool": "study_pipeline", "email": "student@example.com"},
+            params={"ids": pmid, "format": "json", "tool": "study_pipeline", "email": email or "noreply@example.com"},
             timeout=10,
         )
         if r.status_code == 200:
