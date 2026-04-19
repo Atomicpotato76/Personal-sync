@@ -21,6 +21,7 @@ _STOP_KEYWORDS = {
     "organic chemistry", "biology", "science", "research", "study",
     "experiment", "method", "analysis", "result", "introduction",
     "conclusion", "discussion", "review", "article", "paper",
+    "```", "```json",
 }
 
 _BIO_PATTERNS = [
@@ -33,6 +34,10 @@ _BIO_PATTERNS = [
 def _parse_keyword_response(raw: str) -> list[str]:
     """LLM 응답 문자열에서 키워드 배열을 파싱."""
     cleaned = raw.strip()
+    fence_match = re.match(r"^\s*```(?:json)?\s*\n(.*?)\n```\s*$", cleaned, re.IGNORECASE | re.DOTALL)
+    if fence_match:
+        cleaned = fence_match.group(1).strip()
+
     if not cleaned:
         return []
 
