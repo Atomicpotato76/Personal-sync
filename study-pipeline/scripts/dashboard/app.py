@@ -270,6 +270,25 @@ hr { border-color: rgba(212, 196, 170, 0.6) !important; margin: 1.5rem 0 !import
 .stSlider label p,
 .stNumberInput label p,
 .stTextArea label p { color: #1A2E38 !important; }
+
+/* ─── 파이프라인 상태 표시 (가독성 강화) ─────────────────── */
+.pipeline-status {
+    display: block;
+    margin-top: 0.7rem;
+    margin-bottom: 0.35rem;
+    padding: 0.72rem 0.9rem;
+    border-radius: 10px;
+    border-left: 6px solid transparent;
+    background: rgba(255, 255, 255, 0.86);
+    color: #10212A !important; /* high contrast on light bg */
+    font-size: 1.14rem;
+    font-weight: 700;
+    line-height: 1.4;
+    letter-spacing: 0.01em;
+}
+.pipeline-status--running { border-left-color: #007bff; }
+.pipeline-status--success { border-left-color: #28a745; }
+.pipeline-status--error { border-left-color: #dc3545; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -515,6 +534,17 @@ def render_pipeline():
         if runner.is_running and st.button("⏹ 중지"):
             runner.stop()
 
+    def _render_pipeline_status(text: str, state: str) -> None:
+        state_class = {
+            "running": "pipeline-status--running",
+            "success": "pipeline-status--success",
+            "error": "pipeline-status--error",
+        }.get(state, "pipeline-status--running")
+        st.markdown(
+            f'<div class="pipeline-status {state_class}">{text}</div>',
+            unsafe_allow_html=True,
+        )
+
     # ── Progress ──
     if runner.is_running or "pipeline_output" in st.session_state:
         new_lines = runner.get_new_lines()
@@ -533,6 +563,10 @@ def render_pipeline():
                 current_step, total_steps = parsed
                 break
         st.progress(current_step / total_steps, text=f"Step {current_step}/{total_steps}")
+        _render_pipeline_status(
+            f"진행 상태: Step {current_step}/{total_steps} (실행 중)",
+            "running",
+        )
 
         # 출력
         st.code("\n".join(output_lines[-40:]), language="log")
@@ -542,8 +576,13 @@ def render_pipeline():
             st.rerun()
         elif runner.return_code is not None:
             if runner.return_code == 0:
+                _render_pipeline_status("진행 상태: 완료 (성공)", "success")
                 st.success("파이프라인 완료!")
             else:
+                _render_pipeline_status(
+                    f"진행 상태: 실패 (exit code: {runner.return_code})",
+                    "error",
+                )
                 st.error(f"파이프라인 실패 (exit code: {runner.return_code})")
 
 
