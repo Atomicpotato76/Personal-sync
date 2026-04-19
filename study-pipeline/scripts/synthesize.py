@@ -543,19 +543,20 @@ def append_quiz_sections(
     config: dict,
     logger: logging.Logger,
     pretest_text: str = "",
-) -> str:
+) -> tuple[str, bool]:
     """교재 퀴즈 섹션을 추가하고 queue용 자동 퀴즈를 생성."""
     try:
         from textbook_quiz import add_textbook_quiz_section
 
         synthesis = add_textbook_quiz_section(synthesis, subject, sources["note_text"], config)
     except Exception as e:
-        log_warn(logger, f"교재 퀴즈 오류: {e}")
+        log_error(logger, f"교재 퀴즈 오류: {e}")
+        return synthesis, False
 
     try:
         from generate import process_content
 
-        process_content(
+        queue_generated = process_content(
             sources["note_text"],
             subject,
             quiz_source_note,
@@ -565,9 +566,14 @@ def append_quiz_sections(
             pretest_text=pretest_text,
         )
     except Exception as e:
-        log_warn(logger, f"퀴즈 생성 오류: {e}")
+        log_error(logger, f"퀴즈 생성 오류: {e}")
+        return synthesis, False
 
-    return synthesis
+    if not queue_generated:
+        log_error(logger, "퀴즈 생성 실패: queue 파일이 생성되지 않았습니다.")
+        return synthesis, False
+
+    return synthesis, True
 
 
 def persist_outputs(
@@ -746,7 +752,7 @@ def process_note(note_path: Path, config: dict, logger: logging.Logger, pretest_
     synthesis = append_study_plan_section(synthesis, subject, config, logger)
 
     log_step(logger, 9, "교재 퀴즈 + 자동 퀴즈 생성")
-    synthesis = append_quiz_sections(
+    synthesis, quiz_ok = append_quiz_sections(
         synthesis,
         note_name,
         note_path.stem,
@@ -756,6 +762,10 @@ def process_note(note_path: Path, config: dict, logger: logging.Logger, pretest_
         logger,
         pretest_text=pretest_text,
     )
+
+    if not quiz_ok:
+        discord_notifier.pipeline_error("study-pipeline", "퀴즈 생성 실패", note_name)
+        return False
 
     log_step(logger, 10, "결과 저장")
     persist_outputs(synthesis, subject, note_name, sources, config, logger)
@@ -842,7 +852,7 @@ def process_sources(
     synthesis = append_study_plan_section(synthesis, subject, config, logger)
 
     log_step(logger, 9, "교재 퀴즈 + 자동 퀴즈 생성")
-    synthesis = append_quiz_sections(
+    synthesis, quiz_ok = append_quiz_sections(
         synthesis,
         note_name,
         Path(note_name).stem,
@@ -851,6 +861,10 @@ def process_sources(
         config,
         logger,
     )
+
+    if not quiz_ok:
+        discord_notifier.pipeline_error("study-pipeline", "퀴즈 생성 실패", note_name)
+        return False
 
     log_step(logger, 10, "결과 저장")
     persist_outputs(synthesis, subject, note_name, sources, config, logger)
