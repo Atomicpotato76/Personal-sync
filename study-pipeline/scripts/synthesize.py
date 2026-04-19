@@ -1016,17 +1016,33 @@ def process_chapter(subject: str, chapter: str, config: dict, logger: logging.Lo
     for n in all_notes:
         print(f"    - {n.name}")
 
-    # 모든 필기 텍스트 병합
-    combined_text = ""
+    # 3종 소스 수집 (교재 + 강의자료)
+    from chapter_router import ChapterRouter
+    from source_extractor import SourceAggregator
+
+    agg = SourceAggregator(config, subject)
+    chapter_num = _parse_chapter_number(chapter)
+    if chapter_num is None:
+        print(f"[ERROR] 챕터 키 파싱 실패: {chapter}")
+        return False
+
+    router = ChapterRouter(config, subject_cfg, agg)
+
+    # 모든 필기 텍스트 병합 (챕터 라우팅 적용)
+    combined_parts: list[str] = []
     for note in all_notes:
         text = note.read_text(encoding="utf-8")
-        combined_text += f"\n\n=== {note.stem} ===\n{text}"
+        routed = router.extract_for_chapter(text, chapter_num)
+        if not routed.text.strip():
+            continue
+        combined_parts.append(f"=== {note.stem} ({routed.reason}) ===\n{routed.text}")
 
+    if not combined_parts:
+        print(f"[ERROR] 챕터 '{chapter}'로 라우팅된 필기 섹션이 없음")
+        return False
+
+    combined_text = "\n\n".join(combined_parts)
     print(f"  통합 텍스트: {len(combined_text)}자")
-
-    # 3종 소스 수집 (교재 + 강의자료)
-    from source_extractor import SourceAggregator
-    agg = SourceAggregator(config, subject)
 
     chapter_pages = subject_cfg.get("textbook_chapter_pages", {}).get(chapter)
     textbook_text = agg.get_textbook_text(pages=tuple(chapter_pages)) if chapter_pages else None
