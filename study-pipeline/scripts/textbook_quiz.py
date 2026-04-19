@@ -22,6 +22,15 @@ logger = logging.getLogger("pipeline")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "config.yaml"
+ALLOWED_PROBLEM_TYPES = {
+    "conceptual",
+    "mechanism",
+    "prediction",
+    "comparison",
+    "calculation",
+    "naming",
+}
+ALLOWED_DIFFICULTIES = {"easy", "medium", "hard"}
 
 
 def load_config() -> dict:
@@ -89,7 +98,7 @@ def classify_and_format_problems(
 - 난이도: "easy", "medium", "hard"
 - 한 문제당 핵심 키워드(concept_tags) 추출
 - 교재 연습문제 번호가 있으면 보존
-- Output ONLY valid JSON. No markdown fences.
+- 응답은 반드시 JSON 객체 하나만 출력하세요. 설명/주석/마크다운 코드블록 금지.
 
 출력 형식:
 {{
@@ -110,9 +119,92 @@ def classify_and_format_problems(
 --- 교재 연습문제 텍스트 ---
 {raw_problems[:8000]}
 """
+    raw_response = router.generate(prompt, task_type="quiz_generate")
+    if not raw_response:
+        logger.error("교재 퀴즈 분류 LLM 응답 없음")
+        return None
 
-    data = router.generate_json(prompt, task_type="quiz_generate")
-    return data
+    data = _parse_quiz_json_response(raw_response)
+    if not data:
+        logger.error("교재 퀴즈 JSON 파싱 실패. 원본 응답: %s", raw_response[:2000])
+        return None
+
+    return _normalize_quiz_payload(data, chapter)
+
+
+def _parse_quiz_json_response(raw_response: str) -> Optional[dict]:
+    """LLM 응답에서 JSON을 최대한 복구해 파싱한다."""
+    text = raw_response.strip()
+
+    # 1) 직접 파싱
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # 2) 코드 펜스 제거 후 재시도
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        fenced = "\n".join(lines).strip()
+        if fenced:
+            try:
+                return json.loads(fenced)
+            except json.JSONDecodeError:
+                text = fenced
+
+    # 3) JSON 객체 부분만 정규식으로 추출 후 파싱
+    candidates = re.findall(r"\{[\s\S]*\}", text)
+    for candidate in candidates:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def _normalize_quiz_payload(data: dict, chapter: str) -> dict:
+    """스키마를 정규화하고 타입/난이도 fallback을 적용한다."""
+    problems = data.get("problems")
+    if not isinstance(problems, list):
+        problems = []
+
+    normalized: list[dict] = []
+    for idx, problem in enumerate(problems, start=1):
+        if not isinstance(problem, dict):
+            continue
+        problem_type = str(problem.get("type", "conceptual")).strip().lower()
+        if problem_type not in ALLOWED_PROBLEM_TYPES:
+            problem_type = "conceptual"
+
+        difficulty = str(problem.get("difficulty", "medium")).strip().lower()
+        if difficulty not in ALLOWED_DIFFICULTIES:
+            difficulty = "medium"
+
+        concept_tags = problem.get("concept_tags")
+        if not isinstance(concept_tags, list):
+            concept_tags = []
+        concept_tags = [str(tag).strip() for tag in concept_tags if str(tag).strip()]
+
+        normalized.append(
+            {
+                "number": str(problem.get("number", idx)),
+                "type": problem_type,
+                "question": str(problem.get("question", "")).strip(),
+                "difficulty": difficulty,
+                "concept_tags": concept_tags,
+                "hint": str(problem.get("hint", "")).strip(),
+            }
+        )
+
+    return {
+        "chapter": str(data.get("chapter", chapter)),
+        "total_problems": len(normalized),
+        "problems": normalized,
+    }
 
 
 # ══════════════════════════════════════════════════════════════
