@@ -158,7 +158,12 @@ papers:
 pubmed:
   enabled: true
   dynamic_keywords: true
+  keyword_audience: "auto"     # auto | undergrad | research
   max_papers: 3
+  min_citations: 0
+  prefer_review_first: true
+  skip_if_semantic_mismatch: true
+  min_keyword_overlap: 1
   search_scope: "recent_5y"
   language: "english"
   email: "skyhuman13@gmail.com"  # NCBI Entrez 필수
