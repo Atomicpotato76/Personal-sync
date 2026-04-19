@@ -8,6 +8,7 @@ import shutil
 from pathlib import Path
 
 from path_utils import get_study_paths
+from mastery_tracker import update_mastery_from_quiz
 
 
 def load_quiz_json(path: Path) -> dict | None:
@@ -63,6 +64,7 @@ def approve_quiz(config: dict, quiz_id: str, data: dict | None = None) -> Path |
         if data is None:
             return None
 
+    update_mastery_from_quiz(config, data)
     data["status"] = "approved"
     paths.approved.mkdir(parents=True, exist_ok=True)
 

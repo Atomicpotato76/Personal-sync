@@ -74,6 +74,7 @@ class StudyAnalyst:
         weak_concepts: list[dict],
         due_reviews: list[dict],
         study_stats: dict,
+        mastery_context: str,
     ) -> str:
         """학습 계획 생성 (ChatGPT + mem0 데이터)."""
         weak_text = ""
@@ -92,7 +93,18 @@ class StudyAnalyst:
             f"평균 mastery: {stats.get('avg_mastery', 0):.0%}"
         )
 
-        prompt = f"""학생의 학습 데이터를 바탕으로 맞춤 학습 계획을 작성해주세요.
+        template_path = SCRIPT_DIR / "templates" / "study_plan_prompt.txt"
+        if template_path.exists():
+            template = template_path.read_text(encoding="utf-8")
+            prompt = template.format(
+                subject=subject,
+                stats_text=stats_text,
+                weak_text=weak_text or "(없음)",
+                due_text=due_text or "(없음)",
+                mastery_text=mastery_context or "(아직 퀴즈 기록 없음)",
+            )
+        else:
+            prompt = f"""학생의 학습 데이터를 바탕으로 맞춤 학습 계획을 작성해주세요.
 
 규칙:
 - 한국어로 작성, 영문 용어 유지
@@ -101,6 +113,7 @@ class StudyAnalyst:
 - 오늘 복습할 개념 (간격반복 기반) → 이번 주 목표 → 장기 계획
 - 구체적인 학습 방법 제안 (교재 페이지, 문제 유형 등)
 - 우선순위: 🔴 긴급 / 🟡 주의 / 🟢 양호
+- 아래 mastery 상태 외 임의의 mastery 수치/등급을 만들지 말 것
 
 --- 과목: {subject} ---
 
@@ -112,6 +125,9 @@ class StudyAnalyst:
 
 --- 오늘 복습 대상 ---
 {due_text or "(없음)"}
+
+--- mastery 상태 (실데이터) ---
+{mastery_context or "(아직 퀴즈 기록 없음)"}
 """
 
         print("  → 학습 계획 생성 중 (ChatGPT)...")
