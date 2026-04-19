@@ -62,7 +62,7 @@ llm:
     temperature: 0.3
     prefer_subscription: true    # Codex CLI(구독) 우선 사용
   claude:
-    model: "claude-sonnet-4-20250514"  # API fallback 시 사용할 모델
+    model: "claude-sonnet-4-6"  # API fallback 시 사용할 모델
     cli_model: "sonnet"          # CLI 기본 모델 (할당량 절약)
     max_tokens: 16384
     temperature: 0.3             # API 호출 시 temperature (thinking 모드에서는 자동 1.0)
