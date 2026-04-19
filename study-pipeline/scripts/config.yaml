@@ -196,6 +196,30 @@ quiz:
   prefer_textbook_problems: true
   supplement_gap_only: true
 
+# ── Stage 4 검증 에이전트 ──
+verifier:
+  enabled: true
+  max_retries: 2
+  model: "sonnet"  # Claude CLI alias (비용 절약)
+  llm_quick_scan: true
+  checks:
+    pedagogy: true
+    style_alignment: true
+    coverage: true
+    provenance_claims: true
+    provenance_tags: true
+  coverage_threshold: 0.7
+  required_topics:
+    organic_chem:
+      - "hybridization"
+      - "σ/π bond"
+      - "electronegativity"
+      - "pKa"
+      - "Lewis acid/base"
+      - "Lewis structure"
+      - "formal charge"
+      - "bond length comparison"
+
 # ── 출력 설정 (v2) ──
 output:
   smoke_mode: false
@@ -248,6 +272,17 @@ subjects:
       appendix: [617, 663]
       index: [664, 677]
     pubmed_keywords: []
+    chapters:
+      ch1:
+        required_topics:
+          - "hybridization"
+          - "σ/π bond"
+          - "electronegativity"
+          - "pKa"
+          - "Lewis acid/base"
+          - "Lewis structure"
+          - "formal charge"
+          - "bond length comparison"
 
   genomics_ai:
     folder: "유전체학과 AI"
