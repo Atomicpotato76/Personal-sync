@@ -144,6 +144,17 @@ marker:
   langs: ["Korean", "English"]
   # fallback: marker 미설치 시 pdfplumber/pymupdf 사용
 
+# ── 챕터 라우팅 설정 (v4) ──
+chapter_routing:
+  enabled: true
+  similarity_threshold: 0.65
+  label_patterns:
+    - "챕터\\s*(\\d+)"
+    - "Chapter\\s*(\\d+)"
+    - "Ch\\.?\\s*(\\d+)"
+    - "(\\d+)\\s*장"
+    - "(\\d+)\\s*단원"
+
 # ── 논문 관리 (v3) ──
 papers:
   enabled: true
