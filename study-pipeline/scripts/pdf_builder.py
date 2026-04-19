@@ -13,6 +13,7 @@ from reportlab.lib.units import cm
 from reportlab.lib.colors import HexColor
 from reportlab.lib.enums import TA_LEFT
 from reportlab.pdfbase import pdfmetrics
+from reportlab.lib.fonts import addMapping
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -35,33 +36,74 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # ══════════════════════════════════════════════════════════════
 
 _FONTS_REGISTERED = False
+_FONT_NAMES: dict[str, str] = {
+    "regular": "Helvetica",
+    "bold": "Helvetica-Bold",
+}
+
+
+def _resolve_first_existing(paths: list[Path]) -> Path | None:
+    for path in paths:
+        if path.exists():
+            return path
+    return None
 
 
 def _register_fonts() -> None:
     global _FONTS_REGISTERED
+    global _FONT_NAMES
     if _FONTS_REGISTERED:
         return
 
     font_dir = SCRIPT_DIR / "fonts"
-    font_files = {
-        "NotoSansKR": font_dir / "NotoSansKR-Regular.ttf",
-        "NotoSansKR-Bold": font_dir / "NotoSansKR-Bold.ttf",
-    }
-    # 로컬 fonts/ 폴더 → Windows 폰트 디렉토리 fallback
+    # 로컬 fonts/ 폴더 → OS 폰트 디렉토리 fallback
     win_fonts = Path("C:/Windows/Fonts")
-    fallbacks = {
-        "NotoSansKR": win_fonts / "NotoSansKR-Regular.ttf",
-        "NotoSansKR-Bold": win_fonts / "NotoSansKR-Bold.ttf",
+    linux_fonts = Path("/usr/share/fonts")
+    mac_fonts = Path("/Library/Fonts")
+    font_candidates = {
+        "regular": [
+            font_dir / "NotoSansKR-Regular.ttf",
+            win_fonts / "NotoSansKR-Regular.ttf",
+            linux_fonts / "truetype/noto/NotoSansKR-Regular.ttf",
+            linux_fonts / "opentype/noto/NotoSansCJK-Regular.ttc",
+            mac_fonts / "NotoSansKR-Regular.ttf",
+            mac_fonts / "AppleSDGothicNeo.ttc",
+        ],
+        "bold": [
+            font_dir / "NotoSansKR-Bold.ttf",
+            win_fonts / "NotoSansKR-Bold.ttf",
+            linux_fonts / "truetype/noto/NotoSansKR-Bold.ttf",
+            linux_fonts / "opentype/noto/NotoSansCJK-Bold.ttc",
+            mac_fonts / "NotoSansKR-Bold.ttf",
+            mac_fonts / "AppleSDGothicNeoB.ttc",
+        ],
     }
+    resolved = {key: _resolve_first_existing(paths) for key, paths in font_candidates.items()}
+    can_use_noto_kr = resolved["regular"] is not None and resolved["bold"] is not None
 
-    for name, fpath in font_files.items():
-        if not fpath.exists():
-            fpath = fallbacks.get(name, fpath)
-        if fpath.exists():
-            try:
-                pdfmetrics.registerFont(TTFont(name, str(fpath)))
-            except Exception as e:
-                logger.warning(f"폰트 등록 실패 ({name}): {e}")
+    if can_use_noto_kr:
+        try:
+            pdfmetrics.registerFont(TTFont("NotoSansKR", str(resolved["regular"])))
+            pdfmetrics.registerFont(TTFont("NotoSansKR-Bold", str(resolved["bold"])))
+            pdfmetrics.registerFontFamily(
+                "NotoSansKR",
+                normal="NotoSansKR",
+                bold="NotoSansKR-Bold",
+                italic="NotoSansKR",
+                boldItalic="NotoSansKR-Bold",
+            )
+            addMapping("NotoSansKR", 0, 0, "NotoSansKR")
+            addMapping("NotoSansKR", 1, 0, "NotoSansKR-Bold")
+            addMapping("NotoSansKR", 0, 1, "NotoSansKR")
+            addMapping("NotoSansKR", 1, 1, "NotoSansKR-Bold")
+            _FONT_NAMES = {"regular": "NotoSansKR", "bold": "NotoSansKR-Bold"}
+        except Exception as e:
+            logger.warning(f"NotoSansKR 폰트 등록 실패, 기본 폰트로 fallback 합니다: {e}")
+    else:
+        logger.warning(
+            "NotoSansKR 폰트를 찾지 못해 기본 폰트(Helvetica)로 PDF를 생성합니다. "
+            "한글이 깨질 수 있습니다."
+        )
 
     _FONTS_REGISTERED = True
 
@@ -75,27 +117,30 @@ def _build_styles() -> dict:
     _register_fonts()
 
     s = {}
+    body_font = _FONT_NAMES["regular"]
+    bold_font = _FONT_NAMES["bold"]
+
     s["body"] = ParagraphStyle(
-        "KoBody", fontName="NotoSansKR", fontSize=11, leading=17,
+        "KoBody", fontName=body_font, fontSize=11, leading=17,
         spaceBefore=2, spaceAfter=4,
     )
     s["h1"] = ParagraphStyle(
-        "KoH1", fontName="NotoSansKR-Bold", fontSize=20, leading=28,
+        "KoH1", fontName=bold_font, fontSize=20, leading=28,
         spaceBefore=0, spaceAfter=14,
         borderWidth=0, borderPadding=0,
     )
     s["h2"] = ParagraphStyle(
-        "KoH2", fontName="NotoSansKR-Bold", fontSize=15, leading=22,
+        "KoH2", fontName=bold_font, fontSize=15, leading=22,
         spaceBefore=16, spaceAfter=8,
         textColor=HexColor("#1a5276"),
     )
     s["h3"] = ParagraphStyle(
-        "KoH3", fontName="NotoSansKR-Bold", fontSize=13, leading=19,
+        "KoH3", fontName=bold_font, fontSize=13, leading=19,
         spaceBefore=12, spaceAfter=6,
         textColor=HexColor("#2c3e50"),
     )
     s["bullet"] = ParagraphStyle(
-        "KoBullet", fontName="NotoSansKR", fontSize=11, leading=17,
+        "KoBullet", fontName=body_font, fontSize=11, leading=17,
         leftIndent=18, spaceBefore=1, spaceAfter=1,
         bulletIndent=6,
     )
@@ -105,18 +150,18 @@ def _build_styles() -> dict:
         backColor=HexColor("#f4f4f4"),
     )
     s["quote"] = ParagraphStyle(
-        "KoQuote", fontName="NotoSansKR", fontSize=11, leading=17,
+        "KoQuote", fontName=body_font, fontSize=11, leading=17,
         leftIndent=18, spaceBefore=4, spaceAfter=4,
         textColor=HexColor("#2c3e50"),
         borderWidth=0,
     )
     s["exam"] = ParagraphStyle(
-        "KoExam", fontName="NotoSansKR-Bold", fontSize=11, leading=17,
+        "KoExam", fontName=bold_font, fontSize=11, leading=17,
         leftIndent=8, spaceBefore=4, spaceAfter=4,
         backColor=HexColor("#fef9e7"),
     )
     s["prof"] = ParagraphStyle(
-        "KoProf", fontName="NotoSansKR", fontSize=11, leading=17,
+        "KoProf", fontName=body_font, fontSize=11, leading=17,
         leftIndent=12, spaceBefore=4, spaceAfter=4,
         backColor=HexColor("#eafaf1"),
         textColor=HexColor("#1e8449"),
@@ -208,7 +253,7 @@ def _make_image_flowable(img_path: str, max_width: float = 14 * cm) -> list:
         # 캡션 (파일명 기반)
         _register_fonts()
         caption_style = ParagraphStyle(
-            "ImgCaption", fontName="NotoSansKR", fontSize=9, leading=12,
+            "ImgCaption", fontName=_FONT_NAMES["regular"], fontSize=9, leading=12,
             textColor=HexColor("#888888"), alignment=1,  # center
         )
         src_label = "교재" if "textbook" in str(p) else "강의자료" if "slides" in str(p) else "이미지"
