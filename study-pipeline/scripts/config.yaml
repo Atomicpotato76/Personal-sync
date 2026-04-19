@@ -177,6 +177,12 @@ image_pipeline:
 
 # ── 출력 설정 (v2) ──
 output:
+  smoke_mode: false
+  emphasis_levels:
+    S: "★★★"
+    D: "★★"
+    E: "★"
+    default: "★★"
   md:
     vault_inject: true
     include_pubmed: false
