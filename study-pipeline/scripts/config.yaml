@@ -20,6 +20,11 @@ pretest:
 # "strict" = 혼동 쌍을 반드시 인접 슬롯에 배치
 interleaving_mode: soft
 
+# ── mastery 등급 임계값 ──
+mastery:
+  green_threshold: 0.8
+  yellow_threshold: 0.5
+
 # ── 에너지 프로필 (시간대별 집중도) ──
 # 슬롯 시작 시간과 가장 가까운 값이 해당 윈도우에 적용됨
 # high  = 어려운 개념 우선 (mastery<0.5, priority=high)

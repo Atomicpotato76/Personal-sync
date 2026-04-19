@@ -615,6 +615,7 @@ def append_study_plan_section(
     try:
         from analyst import StudyAnalyst
         from memory_manager import MemoryManager
+        from mastery_tracker import get_mastery_lines
 
         mem = MemoryManager(config)
         analyst = StudyAnalyst(config)
@@ -622,9 +623,21 @@ def append_study_plan_section(
         weak = mem.get_weak_concepts(subject)
         due = mem.get_due_reviews(subject)
         stats = mem.get_study_stats(subject)
+        mastery_lines = get_mastery_lines(config, subject, limit=12)
+        mastery_text = "\n".join(mastery_lines)
+
+        if not mastery_lines:
+            synthesis += (
+                "\n\n---\n\n"
+                "## 학습 계획\n\n"
+                "- ℹ️ 아직 퀴즈 기록 없음: mastery 실데이터가 비어 있습니다.\n"
+                "- 현재 단계에서는 임의 mastery %/등급을 생성하지 않습니다.\n"
+                "- 먼저 퀴즈를 1회 이상 풀고 채점하면 다음 실행부터 🔴/🟡/🟢 mastery 기반 계획이 생성됩니다.\n"
+            )
+            return synthesis
 
         if weak or due:
-            plan = analyst.generate_study_plan(subject, weak, due, stats)
+            plan = analyst.generate_study_plan(subject, weak, due, stats, mastery_text)
             if plan:
                 synthesis += f"\n\n---\n\n{plan}"
     except Exception as e:
