@@ -12,6 +12,12 @@ Rules:
 - At the end, include a "핵심 요약" section with bullet points.
 - Output ONLY Markdown. No JSON, no code fences around the entire output.
 - Keep the note concise but thorough — aim for quality over length.
+- Every major paragraph MUST end with provenance + importance in this format: [S] ★★★, [D] ★★, or [E] ★.
+- Provenance tags:
+  - [S] Source-backed: directly supported by lecture notes/textbook/slides
+  - [D] Derived: logically derived explanation from source material
+  - [E] Enrichment: additional context not explicitly present in source material
+- Never output unverified learner-state fields such as mastery %, review schedule, next_review, or study progress.
 
 The following sources are provided:
 1. LECTURE NOTES (필기): The student's own notes from class

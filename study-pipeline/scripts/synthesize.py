@@ -35,6 +35,10 @@ from path_utils import get_study_paths, get_subject_dir, apply_env_path_override
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "config.yaml"
 TOTAL_STEPS = 10
+PROVENANCE_EMPHASIS_RE = re.compile(r"\[(S|D|E)\]\s*(★{1,3})\s*$")
+HALLUCINATED_STATE_RE = re.compile(
+    r"(?im)^\s*[-*]?\s*(?:mastery|학습\s*진행률|복습\s*일정|next[_\s-]?review|study\s*progress)\s*[:=].*$"
+)
 
 
 def load_config() -> dict:
@@ -171,6 +175,79 @@ def synthesize_notes(sources: dict, subject: str, config: dict) -> str | None:
 # Step 3: PubMed 연동
 # ══════════════════════════════════════════════════════════════
 
+def remove_unverified_user_state(content: str) -> str:
+    """LLM이 생성한 근거 없는 사용자 상태 필드를 제거."""
+    cleaned_lines: list[str] = []
+    for line in content.splitlines():
+        if HALLUCINATED_STATE_RE.match(line):
+            continue
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines).strip()
+
+
+def enforce_provenance_and_emphasis(content: str, config: dict) -> str:
+    """주요 문단 말미에 provenance/중요도 태그를 강제."""
+    output_cfg = config.get("output", {})
+    defaults = output_cfg.get("emphasis_levels", {})
+    default_level = str(defaults.get("default", "★★")).strip()
+    if default_level not in {"★", "★★", "★★★"}:
+        default_level = "★★"
+
+    blocks = content.split("\n\n")
+    updated: list[str] = []
+    for block in blocks:
+        stripped = block.strip()
+        if not stripped:
+            continue
+
+        first_line = stripped.splitlines()[0].strip()
+        structural_prefixes = ("#", "-", "*", ">", "|", "```", "---")
+        if first_line.startswith(structural_prefixes):
+            updated.append(stripped)
+            continue
+
+        if not PROVENANCE_EMPHASIS_RE.search(stripped):
+            stripped = f"{stripped} [S] {default_level}"
+        updated.append(stripped)
+
+    return "\n\n".join(updated).strip()
+
+
+def split_smoke_mode_sections(content: str) -> tuple[str, str]:
+    """smoke_mode용으로 [S]/[D]/[E]를 분리하여 메인/보충 노트를 생성."""
+    source_blocks: list[str] = []
+    derived_blocks: list[str] = []
+    enrichment_blocks: list[str] = []
+
+    for block in content.split("\n\n"):
+        stripped = block.strip()
+        if not stripped:
+            continue
+
+        match = PROVENANCE_EMPHASIS_RE.search(stripped)
+        if not match:
+            source_blocks.append(stripped)
+            continue
+
+        label = match.group(1)
+        if label == "S":
+            source_blocks.append(stripped)
+        elif label == "D":
+            derived_blocks.append(stripped)
+        else:
+            enrichment_blocks.append(stripped)
+
+    main_sections: list[str] = ["\n\n".join(source_blocks).strip()] if source_blocks else []
+    if derived_blocks:
+        main_sections.append("## 심화 해설\n\n" + "\n\n".join(derived_blocks).strip())
+
+    enrichment_content = ""
+    if enrichment_blocks:
+        enrichment_content = "## Enrichment\n\n" + "\n\n".join(enrichment_blocks).strip()
+
+    return "\n\n".join(section for section in main_sections if section).strip(), enrichment_content
+
+
 def add_pubmed_section(synthesis_md: str, subject: str, note_text: str, config: dict) -> str:
     """PubMed 관련 논문 overview를 정리노트에 추가."""
     pubmed_cfg = config.get("pubmed", {})
@@ -267,6 +344,28 @@ def save_synthesis_md(
         print(f"  → vault 저장: {folder_name}/정리/{filename}")
 
     return md_path
+
+
+def save_enrichment_md(content: str, subject: str, note_name: str, config: dict) -> Path:
+    """[E] 전용 보충 노트를 별도 파일로 저장."""
+    paths = get_study_paths(config)
+    safe_name = re.sub(r"[^\w\-]", "_", note_name.replace(".md", ""))
+    filename = f"{subject}_{safe_name}_enrichment.md"
+    output_path = paths.output_md / filename
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    now = datetime.now()
+    md = (
+        "---\n"
+        "type: enrichment\n"
+        f"subject: {subject}\n"
+        f"source_note: {note_name}\n"
+        f"generated_at: {now.isoformat(timespec='seconds')}\n"
+        "---\n\n"
+        f"{content}"
+    )
+    output_path.write_text(md, encoding="utf-8")
+    return output_path
 
 
 def save_synthesis_pdf(
@@ -585,11 +684,26 @@ def persist_outputs(
     logger: logging.Logger,
 ) -> tuple[Path, Path | None]:
     """MD/PDF 결과물을 저장."""
-    md_path = save_synthesis_md(synthesis, subject, note_name, config)
+    output_cfg = config.get("output", {})
+    smoke_mode = bool(output_cfg.get("smoke_mode", False))
+
+    cleaned = remove_unverified_user_state(synthesis)
+    tagged = enforce_provenance_and_emphasis(cleaned, config)
+
+    final_main = tagged
+    enrichment_content = ""
+    if smoke_mode:
+        final_main, enrichment_content = split_smoke_mode_sections(tagged)
+
+    md_path = save_synthesis_md(final_main, subject, note_name, config)
     log_detail(logger, f"MD 저장: {md_path.name}")
 
+    if smoke_mode and enrichment_content:
+        enrichment_path = save_enrichment_md(enrichment_content, subject, note_name, config)
+        log_detail(logger, f"Enrichment 저장: {enrichment_path.name}")
+
     all_images = sources["textbook_images"] + sources["slides_images"]
-    pdf_path = save_synthesis_pdf(synthesis, subject, note_name, all_images, config)
+    pdf_path = save_synthesis_pdf(final_main, subject, note_name, all_images, config)
     if pdf_path:
         log_detail(logger, f"PDF 저장: {pdf_path.name}")
 
