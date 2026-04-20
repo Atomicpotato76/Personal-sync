@@ -78,7 +78,10 @@ def check_pedagogy(text: str, rules: list[dict[str, Any]]) -> dict[str, Any]:
     for idx, line in enumerate(_split_lines(text), start=1):
         for rule in rules:
             patterns = [re.compile(p, re.IGNORECASE) for p in rule.get("patterns", [])]
+            exclude_patterns = [re.compile(p, re.IGNORECASE) for p in rule.get("exclude_patterns", [])]
             if patterns and all(p.search(line) for p in patterns):
+                if exclude_patterns and any(p.search(line) for p in exclude_patterns):
+                    continue
                 issues.append(
                     {
                         "location": f"line {idx}",
