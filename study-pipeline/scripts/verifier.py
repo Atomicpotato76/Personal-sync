@@ -375,7 +375,21 @@ def _run_llm_quick_scan(result: dict[str, Any], config: dict, note_text: str, sy
         router = LLMRouter(config)
         llm_result = router.generate_json(prompt, task_type="quiz", system=system_prompt)
         if isinstance(llm_result, dict) and llm_result.get("checks"):
-            return llm_result
+            llm_checks = llm_result.get("checks")
+            if isinstance(llm_checks, dict):
+                deterministic_checks = result.get("checks", {})
+                deterministic_coverage = deterministic_checks.get("coverage")
+                if isinstance(deterministic_coverage, dict):
+                    llm_checks["coverage"] = deterministic_coverage
+
+                llm_result["checks"] = llm_checks
+                llm_result["score"] = _score(llm_checks)
+                llm_result["verdict"] = "PASS" if all(
+                    check.get("pass", False)
+                    for check in llm_checks.values()
+                    if isinstance(check, dict)
+                ) else "FAIL"
+                return llm_result
     except Exception as exc:
         LOGGER.warning("Verifier LLM quick scan 실패: %s", exc)
     return result
