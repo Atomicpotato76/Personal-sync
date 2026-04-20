@@ -272,6 +272,68 @@ subjects:
       appendix: [617, 663]
       index: [664, 677]
     pubmed_keywords: []
+    lecture_chapters:
+      ch1:
+        title: "Structure and Bonding"
+        slides: "Chapter 1 - Structure and Bonding.pdf"
+        textbook_pages: [1, 40]
+        date_range: ["2026-03-01", "2026-03-13"]
+        required_topics:
+          - "hybridization (sp, sp², sp³)"
+          - "σ/π bond"
+          - "electronegativity"
+          - "polar covalent bond"
+          - "Lewis acid/base"
+          - "formal charge"
+          - "bond length/strength (sp³ 154 pm / sp² 134 pm / sp 120 pm)"
+          - "pKa and acid-base strength"
+      ch2:
+        title: "Polar Covalent Bonds; Acids and Bases"
+        slides: "Chapter 2 - Polar Covalent Bonds.pdf"
+        textbook_pages: [41, 80]
+        date_range: ["2026-03-14", "2026-03-26"]
+        required_topics:
+          - "dipole moment"
+          - "resonance structure"
+          - "electrostatic potential map"
+          - "Brønsted acid/base"
+          - "Lewis acid/base"
+          - "pKa trend interpretation"
+      ch3:
+        title: "Organic Compounds: Alkanes and Cycloalkanes"
+        slides: "Chapter 3 - Organic Compounds and Alkanes.pdf"
+        textbook_pages: [81, 120]
+        date_range: ["2026-03-27", "2026-04-07"]
+        required_topics:
+          - "constitutional isomer"
+          - "IUPAC nomenclature"
+          - "cyclohexane chair conformation"
+          - "ring strain"
+          - "conformational analysis"
+      ch4:
+        title: "Stereochemistry"
+        slides: "Chapter 4 - Stereochemistry.pdf"
+        textbook_pages: [121, 160]
+        date_range: ["2026-04-08", "2026-04-18"]
+        required_topics:
+          - "chirality"
+          - "R/S assignment"
+          - "enantiomer vs diastereomer"
+          - "meso compound"
+          - "optical activity"
+      ch5:
+        title: "Reactions of Alkenes and Alkynes"
+        slides: "Chapter 5 - Reactions of Alkenes.pdf"
+        textbook_pages: [161, 210]
+        date_range: ["2026-04-19", "2026-04-30"]
+        required_topics:
+          - "electrophilic addition"
+          - "Markovnikov rule"
+          - "carbocation rearrangement"
+          - "syn/anti addition"
+          - "alkyne acidity"
+          - "hydroboration-oxidation"
+
     chapters:
       ch1:
         required_topics:
