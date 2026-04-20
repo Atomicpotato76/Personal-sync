@@ -19,6 +19,13 @@ Rules:
   - [E] Enrichment: additional context not explicitly present in source material
 - Never output unverified learner-state fields such as mastery %, review schedule, next_review, or study progress.
 
+Execution mode: {mode}
+Mode guidance:
+{mode_instruction}
+
+Required coverage topics (must all be addressed):
+{required_topics}
+
 The following sources are provided:
 1. LECTURE NOTES (필기): The student's own notes from class
 2. TEXTBOOK (교재): Relevant textbook pages

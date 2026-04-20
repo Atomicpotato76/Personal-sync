@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +14,62 @@ from path_utils import get_study_paths, get_subject_dir
 
 logger = logging.getLogger("pipeline")
 
+
+
+
+def _parse_note_date(filename: str, default_year: int | None = None) -> date | None:
+    """필기 파일명에서 날짜를 추출한다.
+
+    지원 예시:
+    - 2026-04-09.md
+    - 2026.04.09.md
+    - 3월 10일.md
+    - 4월2일.md
+    """
+    stem = Path(filename).stem.strip()
+    year = default_year or datetime.now().year
+
+    iso_match = re.search(r"(?P<y>20\d{2})[-._\s](?P<m>\d{1,2})[-._\s](?P<d>\d{1,2})", stem)
+    if iso_match:
+        try:
+            return date(
+                int(iso_match.group("y")),
+                int(iso_match.group("m")),
+                int(iso_match.group("d")),
+            )
+        except ValueError:
+            return None
+
+    kor_match = re.search(r"(?P<m>\d{1,2})\s*월\s*(?P<d>\d{1,2})\s*일", stem)
+    if kor_match:
+        try:
+            return date(year, int(kor_match.group("m")), int(kor_match.group("d")))
+        except ValueError:
+            return None
+
+    md_match = re.search(r"(?P<m>\d{1,2})[-./](?P<d>\d{1,2})", stem)
+    if md_match:
+        try:
+            return date(year, int(md_match.group("m")), int(md_match.group("d")))
+        except ValueError:
+            return None
+
+    return None
+
+
+def filter_notes_by_date_range(
+    note_paths: list[Path],
+    start_date: date,
+    end_date: date,
+    default_year: int | None = None,
+) -> list[Path]:
+    """파일명 날짜를 이용해 지정 범위의 필기를 필터링한다."""
+    matched: list[Path] = []
+    for note_path in note_paths:
+        parsed = _parse_note_date(note_path.name, default_year=default_year)
+        if parsed and start_date <= parsed <= end_date:
+            matched.append(note_path)
+    return sorted(matched)
 
 # ══════════════════════════════════════════════════════════════
 # 텍스트 추출

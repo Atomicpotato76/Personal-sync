@@ -21,7 +21,7 @@ import json
 import logging
 import re
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 if sys.stdout.encoding != "utf-8":
@@ -114,7 +114,13 @@ def collect_sources(note_path: Path, subject: str, config: dict) -> dict:
 # Step 2: LLM 종합 (2-pass 또는 1-pass)
 # ══════════════════════════════════════════════════════════════
 
-def synthesize_notes(sources: dict, subject: str, config: dict) -> str | None:
+def synthesize_notes(
+    sources: dict,
+    subject: str,
+    config: dict,
+    required_topics: list[str] | None = None,
+    mode: str = "full",
+) -> str | None:
     """3종 소스를 LLM에 투입하여 종합 정리노트 생성."""
     from llm_router import LLMRouter
 
@@ -134,10 +140,32 @@ def synthesize_notes(sources: dict, subject: str, config: dict) -> str | None:
     textbook_content = truncate_text(sources.get("textbook_text") or "(교재 텍스트 없음)", 12000)
     slides_content = truncate_text(sources.get("slides_text") or "(강의자료 없음)", 8000)
 
+    required_topics = required_topics or []
+    required_topics_text = "\n".join(f"- {topic}" for topic in required_topics)
+    if not required_topics_text:
+        required_topics_text = "- (별도 지정 없음)"
+
+    if mode == "lecture_only":
+        mode_instruction = (
+            "※ 이번 챕터는 학생 필기가 없거나 부족합니다.\n"
+            "강의 슬라이드와 교재 범위만을 기반으로 정리노트를 작성하세요.\n"
+            "학생의 개인 질문/메모/강조 표시는 반영하지 않고, 표준 교재 흐름을 충실히 따릅니다.\n"
+            "required_topics를 빠짐없이 커버하세요.\n"
+            "lecture-only mode에서는 [S] 근거 중심으로 작성하고, [D]는 최소 보충, [E]는 꼭 필요할 때만 사용하세요."
+        )
+    else:
+        mode_instruction = (
+            "필기 내용을 기본 구조로 우선 반영하되, 교재/슬라이드 근거로 빠진 개념을 보완하세요. "
+            "required_topics를 빠짐없이 커버하세요."
+        )
+
     prompt = template.format(
         note_content=note_content,
         textbook_content=textbook_content,
         slides_content=slides_content,
+        required_topics=required_topics_text,
+        mode=mode,
+        mode_instruction=mode_instruction,
     )
 
     # 2-pass: LM Studio(초안) → Claude(심화)
@@ -1097,11 +1125,79 @@ def process_sources(
     return True
 
 
+
+def _chapter_sort_key(chapter_key: str) -> tuple[int, str]:
+    number = _parse_chapter_number(chapter_key)
+    if number is None:
+        return (10_000, chapter_key)
+    return (number, chapter_key)
+
+
+def _parse_date_range(date_range: list[str]) -> tuple[date, date] | None:
+    if not isinstance(date_range, list) or len(date_range) != 2:
+        return None
+    try:
+        start = datetime.strptime(date_range[0], "%Y-%m-%d").date()
+        end = datetime.strptime(date_range[1], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+    if start > end:
+        start, end = end, start
+    return start, end
+
+
+def _chapter_textbook_pages(chapter_cfg: dict) -> tuple[int, int] | None:
+    pages = chapter_cfg.get("textbook_pages")
+    if not isinstance(pages, list) or len(pages) != 2:
+        return None
+    try:
+        start_1 = int(pages[0])
+        end_1 = int(pages[1])
+    except (TypeError, ValueError):
+        return None
+    if start_1 <= 0 or end_1 <= 0:
+        return None
+    if start_1 > end_1:
+        start_1, end_1 = end_1, start_1
+    return (start_1 - 1, end_1)
+
+
+def process_chapter_all(subject: str, config: dict, logger: logging.Logger) -> bool:
+    """과목의 lecture_chapters 전체를 순차 실행."""
+    subject_cfg = config["subjects"].get(subject)
+    if not subject_cfg:
+        print(f"[ERROR] 과목 '{subject}' 없음")
+        return False
+
+    lecture_chapters = subject_cfg.get("lecture_chapters")
+    if not isinstance(lecture_chapters, dict) or not lecture_chapters:
+        print(f"[ERROR] subjects.{subject}.lecture_chapters 설정이 없습니다.")
+        return False
+
+    all_ok = True
+    for chapter in sorted(lecture_chapters.keys(), key=_chapter_sort_key):
+        print(f"\n{'=' * 60}")
+        print(f"[챕터 처리] {subject}/{chapter}")
+        if not process_chapter(subject, chapter, config, logger):
+            all_ok = False
+
+    return all_ok
+
 def process_chapter(subject: str, chapter: str, config: dict, logger: logging.Logger) -> bool:
     """한 챕터의 모든 필기를 통합하여 종합 정리노트 생성."""
     subject_cfg = config["subjects"].get(subject)
     if not subject_cfg:
         print(f"[ERROR] 과목 '{subject}' 없음")
+        return False
+
+    lecture_chapters = subject_cfg.get("lecture_chapters")
+    if not isinstance(lecture_chapters, dict) or not lecture_chapters:
+        print(f"[ERROR] subjects.{subject}.lecture_chapters 설정이 없습니다.")
+        return False
+
+    chapter_cfg = lecture_chapters.get(chapter)
+    if not isinstance(chapter_cfg, dict):
+        print(f"[ERROR] lecture_chapters에 '{chapter}' 설정 없음")
         return False
 
     subject_dir = get_subject_dir(config, subject)
@@ -1110,20 +1206,8 @@ def process_chapter(subject: str, chapter: str, config: dict, logger: logging.Lo
         print(f"[ERROR] 필기 폴더 없음: {note_dir}")
         return False
 
-    # 챕터와 관련된 .md만 수집
-    all_notes = _collect_chapter_notes(note_dir, chapter, subject_cfg)
-    if not all_notes:
-        print(f"[ERROR] 챕터 '{chapter}'와 매칭되는 필기 파일 없음")
-        return False
-
-    print(f"챕터 통합 모드: {subject}/{chapter}")
-    print(f"  필기 파일: {len(all_notes)}개")
-    for n in all_notes:
-        print(f"    - {n.name}")
-
-    # 3종 소스 수집 (교재 + 강의자료)
     from chapter_router import ChapterRouter
-    from source_extractor import SourceAggregator
+    from source_extractor import SourceAggregator, filter_notes_by_date_range
 
     agg = SourceAggregator(config, subject)
     chapter_num = _parse_chapter_number(chapter)
@@ -1131,32 +1215,40 @@ def process_chapter(subject: str, chapter: str, config: dict, logger: logging.Lo
         print(f"[ERROR] 챕터 키 파싱 실패: {chapter}")
         return False
 
+    date_range = _parse_date_range(chapter_cfg.get("date_range", []))
+    all_note_files = sorted(note_dir.glob("*.md"))
+    note_candidates = all_note_files
+    if date_range:
+        note_candidates = filter_notes_by_date_range(all_note_files, date_range[0], date_range[1], default_year=date_range[0].year)
+
     router = ChapterRouter(config, subject_cfg, agg)
 
-    # 모든 필기 텍스트 병합 (챕터 라우팅 적용)
     combined_parts: list[str] = []
-    for note in all_notes:
+    for note in note_candidates:
         text = note.read_text(encoding="utf-8")
         routed = router.extract_for_chapter(text, chapter_num)
         if not routed.text.strip():
             continue
         combined_parts.append(f"=== {note.stem} ({routed.reason}) ===\n{routed.text}")
 
-    if not combined_parts:
-        print(f"[ERROR] 챕터 '{chapter}'로 라우팅된 필기 섹션이 없음")
-        return False
+    lecture_only_mode = not combined_parts
+    if lecture_only_mode:
+        print("  [INFO] date_range 내 필기 없음 → lecture-only mode로 전환")
+        note_text = "(필기 없음: 강의자료/교재 기반 lecture-only mode)"
+    else:
+        print(f"  필기 파일: {len(combined_parts)}개")
+        note_text = "\n\n".join(combined_parts)
 
-    combined_text = "\n\n".join(combined_parts)
-    print(f"  통합 텍스트: {len(combined_text)}자")
+    textbook_pages = _chapter_textbook_pages(chapter_cfg)
+    textbook_text = agg.get_textbook_text(pages=textbook_pages) if textbook_pages else agg.get_textbook_text()
+    textbook_images = agg.get_textbook_images(pages=textbook_pages) if textbook_pages else agg.get_textbook_images()
 
-    chapter_pages = subject_cfg.get("textbook_chapter_pages", {}).get(chapter)
-    textbook_text = agg.get_textbook_text(pages=tuple(chapter_pages)) if chapter_pages else None
-    slides_text = agg.get_slides_text()
-    textbook_images = agg.get_textbook_images(pages=tuple(chapter_pages)) if chapter_pages else []
-    slides_images = agg.get_slides_images()
+    slide_filename = chapter_cfg.get("slides")
+    slides_text = agg.get_slides_text(slide_filename=slide_filename) if slide_filename else agg.get_slides_text()
+    slides_images = agg.get_slides_images(slide_filename=slide_filename) if slide_filename else agg.get_slides_images()
 
     sources = {
-        "note_text": combined_text,
+        "note_text": note_text,
         "textbook_text": textbook_text,
         "slides_text": slides_text,
         "page_refs": {"textbook_pages": [], "slide_pages": []},
@@ -1164,25 +1256,31 @@ def process_chapter(subject: str, chapter: str, config: dict, logger: logging.Lo
         "slides_images": slides_images,
     }
 
-    # LLM 종합
+    required_topics = chapter_cfg.get("required_topics")
+    if not isinstance(required_topics, list):
+        required_topics = []
+
     print("  LLM 종합 중...")
-    synthesis = synthesize_notes(sources, subject, config)
+    synthesis = synthesize_notes(
+        sources,
+        subject,
+        config,
+        required_topics=required_topics,
+        mode="lecture_only" if lecture_only_mode else "full",
+    )
     if not synthesis:
         return False
 
-    # PubMed
-    synthesis = add_pubmed_section(synthesis, subject, combined_text, config)
-    # 보충 설명
+    synthesis = add_pubmed_section(synthesis, subject, note_text, config)
     synthesis = add_supplementary_explanations(synthesis, config)
-    # 교재 퀴즈
     try:
         from textbook_quiz import add_textbook_quiz_section
-        synthesis = add_textbook_quiz_section(synthesis, subject, combined_text, config)
+
+        synthesis = add_textbook_quiz_section(synthesis, subject, note_text, config)
     except Exception as e:
         print(f"  [WARN] 교재 퀴즈 오류: {e}")
 
-    # 저장
-    chapter_name = f"{chapter}_통합"
+    chapter_name = f"{chapter}_notes"
     md_path = save_synthesis_md(synthesis, subject, f"{chapter_name}.md", config)
     print(f"  MD: {md_path.name}")
 
@@ -1191,7 +1289,7 @@ def process_chapter(subject: str, chapter: str, config: dict, logger: logging.Lo
     if pdf_path:
         print(f"  PDF: {pdf_path.name}")
 
-    logger.info(f"챕터 통합 완료: {subject}/{chapter}")
+    logger.info(f"챕터 통합 완료: {subject}/{chapter} (lecture_only={lecture_only_mode})")
     refresh_hermes_schedule(config, "chapter_completed", logger)
     return True
 
@@ -1211,6 +1309,7 @@ def main() -> None:
         print('  python synthesize.py <노트파일 경로>              # 단일 노트')
         print('  python synthesize.py <폴더 경로>                  # 폴더 내 전체')
         print('  python synthesize.py --chapter <과목> <챕터>      # 챕터 통합')
+        print('  python synthesize.py --chapter-all <과목>         # 챕터 전체 배치')
         print('  python synthesize.py --notes <노트1> [노트2 ...]  # 소스 직접 지정')
         print('                       [--textbook <교재.pdf>]')
         print('                       [--slides <강의자료.pdf>]')
@@ -1219,6 +1318,7 @@ def main() -> None:
         print("예시:")
         print('  python synthesize.py "../../유기화학/필기/4월 9일.md"')
         print('  python synthesize.py --chapter organic_chem ch4')
+        print('  python synthesize.py --chapter-all organic_chem')
         print('  python synthesize.py --notes note1.md note2.md --textbook tb.pdf --slides sl.pdf')
         sys.exit(0)
 
@@ -1265,6 +1365,17 @@ def main() -> None:
         subject = sys.argv[2]
         chapter = sys.argv[3]
         if not process_chapter(subject, chapter, config, logger):
+            sys.exit(1)
+        print("\n완료!")
+        return
+
+    if sys.argv[1] == "--chapter-all":
+        if len(sys.argv) < 3:
+            print("사용법: python synthesize.py --chapter-all <과목키>")
+            print("예시: python synthesize.py --chapter-all organic_chem")
+            sys.exit(1)
+        subject = sys.argv[2]
+        if not process_chapter_all(subject, config, logger):
             sys.exit(1)
         print("\n완료!")
         return
