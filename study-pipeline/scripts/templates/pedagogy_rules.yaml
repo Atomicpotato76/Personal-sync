@@ -3,6 +3,10 @@ rules:
     patterns:
       - "(lone\\s*pair|비결합\\s*전자쌍)"
       - "(결합|bond|형성|참여|사용)"
+    exclude_patterns:
+      - "(참여하지\\s*않|사용되지\\s*않|기여하지\\s*않|not\\s+involved|non-?bonding|미참여|제외|아닌)"
+      - "(vs\\.?|versus|비교|구분|차이|구별)"
+      - "(LP[–-]BP|LP[–-]LP|bonding\\s*pair.{0,40}lone\\s*pair|lone\\s*pair.{0,40}bonding\\s*pair).{0,20}(반발|repulsion)"
     problem: "lone pair와 bonding pair를 혼동한 표현"
     suggestion: "결합 형성 전자쌍(bonding pair)과 비결합 전자쌍(lone pair)을 분리해 설명하세요."
 
