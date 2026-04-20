@@ -1,0 +1,21 @@
+rules:
+  - id: lone_pair_bonding_confusion
+    patterns:
+      - "(lone\\s*pair|비결합\\s*전자쌍)"
+      - "(결합|bond|형성|참여|사용)"
+    problem: "lone pair와 bonding pair를 혼동한 표현"
+    suggestion: "결합 형성 전자쌍(bonding pair)과 비결합 전자쌍(lone pair)을 분리해 설명하세요."
+
+  - id: octet_overgeneralization
+    patterns:
+      - "(옥텟|octet)"
+      - "(항상|반드시|절대)"
+    problem: "옥텟 규칙을 예외 없이 단정"
+    suggestion: "3주기 이상 원소/라디칼/전자 부족 분자 등 예외 가능성을 함께 명시하세요."
+
+  - id: resonance_structure_identity
+    patterns:
+      - "(공명|resonance)"
+      - "(전환|왔다갔다|서로\\s*변환)"
+    problem: "공명구조를 실제 평형 변환으로 오해할 수 있는 표현"
+    suggestion: "공명은 실제 전환이 아닌 전자 비편재화 표현임을 명시하세요."

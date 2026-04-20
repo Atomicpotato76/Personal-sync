@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import re
 import sys
@@ -741,6 +742,61 @@ def persist_outputs(
     return md_path, pdf_path
 
 
+def run_stage4_verifier(
+    synthesis: str,
+    sources: dict,
+    subject: str,
+    note_name: str,
+    config: dict,
+    logger: logging.Logger,
+) -> tuple[str, dict]:
+    """Stage 4 verifier 실행 + 필요 시 수정 지시 기반 재시도."""
+    from verifier import VerifierConfig, save_verification_report, verify_note_and_quiz
+    from llm_router import LLMRouter
+
+    verifier_cfg = VerifierConfig.from_config(config)
+    if not verifier_cfg.enabled:
+        return synthesis, {"verdict": "SKIP", "score": None, "checks": {}}
+
+    current = synthesis
+    best_report: dict = {"verdict": "FAIL", "score": 0, "checks": {}}
+    logs_dir = get_study_paths(config).logs
+    report_path = logs_dir / f"verification_report_{subject}_{note_name.replace('.md', '')}.json"
+    router = LLMRouter(config)
+
+    for attempt in range(verifier_cfg.max_retries + 1):
+        report = verify_note_and_quiz(sources.get("note_text", ""), current, config, subject)
+        report["attempt"] = attempt + 1
+        best_report = report
+        save_verification_report(report, report_path)
+        log_detail(
+            logger,
+            f"[Stage 4] 검증 결과: {report.get('verdict')} ({report.get('score')}/100), attempt={attempt + 1}",
+        )
+
+        if report.get("verdict") == "PASS":
+            return current, report
+
+        if attempt >= verifier_cfg.max_retries:
+            break
+
+        fix_prompt = (
+            "아래 검증 리포트를 만족하도록 정리노트/퀴즈 섹션을 수정하세요. "
+            "출력은 수정된 markdown 본문만 반환.\n\n"
+            f"[fix_instructions]\n{report.get('fix_instructions', '')}\n\n"
+            f"[current]\n{current}"
+        )
+        fixed = router.generate(fix_prompt, task_type="synthesis_deep")
+        if fixed and fixed.strip():
+            current = fixed.strip()
+            log_detail(logger, "[Stage 4] fix_instructions 반영 재생성 완료")
+        else:
+            log_warn(logger, "[Stage 4] 재생성 실패, 기존 결과로 다음 검증 진행")
+
+    log_warn(logger, f"[Stage 4] 최종 FAIL, 리포트 저장: {report_path.name}")
+    return current, best_report
+
+
 def record_synthesis_session(
     subject: str,
     note_name: str,
@@ -912,13 +968,22 @@ def process_note(note_path: Path, config: dict, logger: logging.Logger, pretest_
         discord_notifier.pipeline_error("study-pipeline", "퀴즈 생성 실패", note_name)
         return False
 
+    log_detail(logger, "[Stage 4] verifier 실행")
+    synthesis, verification_report = run_stage4_verifier(
+        synthesis, sources, subject, note_name, config, logger
+    )
+
     log_step(logger, 10, "결과 저장")
     persist_outputs(synthesis, subject, note_name, sources, config, logger)
     record_synthesis_session(subject, note_name, agent_results.get("classification"), config)
     refresh_hermes_schedule(config, "synthesis_completed", logger)
 
     logger.info(f"[DONE] v3 종합 완료: {subject}/{note_name}")
-    discord_notifier.pipeline_complete("study-pipeline", f"{len(synthesis)}자 정리노트 생성", note_name)
+    verifier_score = verification_report.get("score")
+    summary = f"{len(synthesis)}자 정리노트 생성"
+    if verifier_score is not None:
+        summary += f" (verifier: {verifier_score}/100)"
+    discord_notifier.pipeline_complete("study-pipeline", summary, note_name)
     print(f"\n  {'═'*50}")
     print(f"  ✓ 파이프라인 완료: {subject}/{note_name}")
     return True
@@ -1011,13 +1076,22 @@ def process_sources(
         discord_notifier.pipeline_error("study-pipeline", "퀴즈 생성 실패", note_name)
         return False
 
+    log_detail(logger, "[Stage 4] verifier 실행")
+    synthesis, verification_report = run_stage4_verifier(
+        synthesis, sources, subject, note_name, config, logger
+    )
+
     log_step(logger, 10, "결과 저장")
     persist_outputs(synthesis, subject, note_name, sources, config, logger)
     record_synthesis_session(subject, note_name, agent_results.get("classification"), config)
     refresh_hermes_schedule(config, "sources_completed", logger)
 
     logger.info(f"[DONE] 소스 직접 선택 완료: {subject}/{note_name}")
-    discord_notifier.pipeline_complete("study-pipeline", f"소스 직접선택 완료", note_name)
+    verifier_score = verification_report.get("score")
+    summary = "소스 직접선택 완료"
+    if verifier_score is not None:
+        summary += f" (verifier: {verifier_score}/100)"
+    discord_notifier.pipeline_complete("study-pipeline", summary, note_name)
     print(f"\n  {'═'*50}")
     print(f"  ✓ 파이프라인 완료: {subject}/{note_name}")
     return True
