@@ -209,6 +209,9 @@ verifier:
     provenance_claims: true
     provenance_tags: true
   coverage_threshold: 0.7
+  semantic_matching: true
+  semantic_threshold: 0.75
+  topic_aliases_file: "templates/topic_aliases.yaml"
   required_topics:
     organic_chem:
       - "hybridization"
