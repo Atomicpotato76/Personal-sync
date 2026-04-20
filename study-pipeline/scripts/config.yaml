@@ -142,6 +142,13 @@ mem0:
     base_url: "http://100.78.18.95:1234/v1"
     api_key: "lm-studio"
 
+
+verifier:
+  semantic_matching: true
+  semantic_threshold: 0.75
+  topic_aliases_file: "templates/topic_aliases.yaml"
+
+
 # ── marker-pdf 설정 (v3) ──
 marker:
   enabled: true
