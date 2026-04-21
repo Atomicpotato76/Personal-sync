@@ -356,16 +356,28 @@ class MemoryService:
 
     def save_execution_result(self, run_id: str, result: ExecutionResult) -> Path:
         workspace = self.get_workspace_path(run_id)
+        workspace_root = workspace.resolve()
         exec_dir = self._run_output_dir(run_id) / "executions"
         exec_dir.mkdir(parents=True, exist_ok=True)
         metadata_path = exec_dir / f"{result.workstream_id}.json"
         metadata_path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
         changed_files: list[str] = []
         for generated_file in result.files:
-            target = workspace / generated_file.path
+            file_path = Path(generated_file.path)
+            if file_path.is_absolute() or ".." in file_path.parts:
+                raise ValueError(f"Unsafe generated file path: {generated_file.path}")
+            target = (workspace_root / generated_file.path).resolve()
+            if not target.is_relative_to(workspace_root):
+                raise ValueError(f"Generated file path escapes workspace: {generated_file.path}")
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(generated_file.content, encoding="utf-8")
             changed_files.append(generated_file.path)
+        if result.research_report is not None:
+            evidence_rel = Path("research_evidence") / f"{result.workstream_id}.json"
+            evidence_path = (workspace_root / evidence_rel).resolve()
+            evidence_path.parent.mkdir(parents=True, exist_ok=True)
+            evidence_path.write_text(result.research_report.model_dump_json(indent=2), encoding="utf-8")
+            changed_files.append(evidence_rel.as_posix())
         self.update_workstream(
             run_id,
             result.workstream_id,

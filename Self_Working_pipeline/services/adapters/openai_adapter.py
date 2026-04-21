@@ -7,14 +7,101 @@ from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from core.serialization import parse_json_model
+from core.settings import get_settings
 from services.adapters.base import JsonModelAdapter
 from services.tools.pubmed_tool import check_reference_genome, fetch_abstract, search_pubmed
 
 
 class OpenAIJsonAdapter(JsonModelAdapter):
-    def __init__(self, *, api_key: str, model: str) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        web_search_enabled: bool | None = None,
+        code_interpreter_enabled: bool | None = None,
+        code_interpreter_memory_limit: str | None = None,
+    ) -> None:
         self.client = OpenAI(api_key=api_key)
         self.model = model
+        settings = get_settings()
+        self.web_search_enabled = (
+            settings.openai_web_search_enabled if web_search_enabled is None else web_search_enabled
+        )
+        self.code_interpreter_enabled = (
+            settings.openai_code_interpreter_enabled if code_interpreter_enabled is None else code_interpreter_enabled
+        )
+        self.code_interpreter_memory_limit = (
+            settings.openai_code_interpreter_memory_limit
+            if code_interpreter_memory_limit is None
+            else code_interpreter_memory_limit
+        )
+
+    def _build_tools(self) -> list[dict[str, Any]]:
+        tools: list[dict[str, Any]] = []
+        if self.web_search_enabled:
+            tools.append({"type": "web_search"})
+        if self.code_interpreter_enabled:
+            tools.append(
+                {
+                    "type": "code_interpreter",
+                    "container": {"type": "auto", "memory_limit": self.code_interpreter_memory_limit},
+                }
+            )
+        tools.extend(
+            [
+                {
+                    "type": "function",
+                    "name": "search_pubmed",
+                    "description": "Search PubMed for papers and return metadata such as PMID, title, authors, journal, year, and DOI.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "Search query for PubMed."},
+                            "max_results": {
+                                "type": "integer",
+                                "description": "Maximum number of results to return.",
+                                "default": 10,
+                                "minimum": 1,
+                                "maximum": 100,
+                            },
+                        },
+                        "required": ["query"],
+                        "additionalProperties": False,
+                    },
+                },
+                {
+                    "type": "function",
+                    "name": "fetch_abstract",
+                    "description": "Fetch the abstract text for a PubMed record by PMID.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "pmid": {"type": "string", "description": "PubMed ID (PMID)."}
+                        },
+                        "required": ["pmid"],
+                        "additionalProperties": False,
+                    },
+                },
+                {
+                    "type": "function",
+                    "name": "check_reference_genome",
+                    "description": "Check whether an organism has a reference/representative genome in NCBI Assembly and return assembly stats.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "organism": {
+                                "type": "string",
+                                "description": "Organism name, e.g., Escherichia coli.",
+                            }
+                        },
+                        "required": ["organism"],
+                        "additionalProperties": False,
+                    },
+                },
+            ]
+        )
+        return tools
 
     def generate_structured(
         self,
@@ -64,59 +151,7 @@ class OpenAIJsonAdapter(JsonModelAdapter):
         use_response_format: bool,
         response_schema: dict | None = None,
     ) -> str:
-        tools = [
-            {"type": "web_search"},
-            {"type": "code_interpreter"},
-            {
-                "type": "function",
-                "name": "search_pubmed",
-                "description": "Search PubMed for papers and return metadata such as PMID, title, authors, journal, year, and DOI.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string", "description": "Search query for PubMed."},
-                        "max_results": {
-                            "type": "integer",
-                            "description": "Maximum number of results to return.",
-                            "default": 10,
-                            "minimum": 1,
-                            "maximum": 100,
-                        },
-                    },
-                    "required": ["query"],
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "type": "function",
-                "name": "fetch_abstract",
-                "description": "Fetch the abstract text for a PubMed record by PMID.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "pmid": {"type": "string", "description": "PubMed ID (PMID)."}
-                    },
-                    "required": ["pmid"],
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "type": "function",
-                "name": "check_reference_genome",
-                "description": "Check whether an organism has a reference/representative genome in NCBI Assembly and return assembly stats.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "organism": {
-                            "type": "string",
-                            "description": "Organism name, e.g., Escherichia coli.",
-                        }
-                    },
-                    "required": ["organism"],
-                    "additionalProperties": False,
-                },
-            },
-        ]
+        tools = self._build_tools()
 
         kwargs: dict[str, Any] = {
             "model": self.model,

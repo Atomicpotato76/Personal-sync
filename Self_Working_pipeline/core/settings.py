@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     pipeline_db_path: str = "outputs/pipeline.db"
     max_retries_per_workstream: int = 2
     pipeline_mode: str = "code"
+    openai_web_search_enabled: bool = True
+    openai_code_interpreter_enabled: bool = False
+    openai_code_interpreter_memory_limit: str = "4g"
+    research_parallelism: int = 1
+    research_require_evidence_json: bool = True
 
     model_config = SettingsConfigDict(
         extra="ignore",

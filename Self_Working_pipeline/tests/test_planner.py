@@ -74,3 +74,24 @@ def test_create_plan_uses_digest_for_long_requests() -> None:
     assert result == plan_bundle
     assert "Planning digest:" in captured["user_prompt"]
     assert "Condensed planning digest" in captured["user_prompt"]
+
+
+def test_condense_request_preserves_harness_sections() -> None:
+    planner = PlannerService(object(), request_digest_chars=550)
+    raw = "\n".join(
+        [
+            "# Proposal",
+            "intro " * 100,
+            "## Harness Contract",
+            "- invariant: never modify scope",
+            "- output contract: include evidence",
+            "## Background",
+            "filler " * 300,
+        ]
+    )
+
+    digest = planner.condense_request(raw)
+
+    assert "## Non-Negotiable Harness Sections" in digest
+    assert "## Harness Contract" in digest
+    assert "invariant: never modify scope" in digest

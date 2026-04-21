@@ -269,11 +269,16 @@ class HermesOrchestrator:
         plan_bundle = self.memory.load_plan_bundle(run_id)
         while True:
             workstreams = self.memory.list_workstreams(run_id)
-            ready = next(
-                (item for item in workstreams if item["status"] in {WorkstreamStatus.pending.value, WorkstreamStatus.retry_requested.value}),
-                None,
-            )
+            ready = self._select_ready_workstream(workstreams, plan_bundle)
             if ready is None:
+                if any(
+                    item["status"] in {WorkstreamStatus.pending.value, WorkstreamStatus.retry_requested.value}
+                    for item in workstreams
+                ):
+                    error = "No dependency-ready workstream found. Possible cyclic or missing dependencies."
+                    self.memory.update_run(run_id, stage=RunStage.executing, status=RunStatus.failed, last_error=error)
+                    self.memory.append_event(run_id, RunStage.executing, "dependency_blocked", error)
+                    raise RuntimeError(error)
                 break
 
             active_stage_name = ready["layer"]
@@ -478,6 +483,23 @@ class HermesOrchestrator:
             return ApprovalStage.checkpoint
         if run.stage == RunStage.testing and run.status == RunStatus.waiting_approval:
             return ApprovalStage.merge
+        return None
+
+    @staticmethod
+    def _select_ready_workstream(workstreams: list[dict], plan_bundle: PlanBundle) -> dict | None:
+        candidates = [
+            item for item in workstreams if item["status"] in {WorkstreamStatus.pending.value, WorkstreamStatus.retry_requested.value}
+        ]
+        if not candidates:
+            return None
+        status_map = {item["workstream_id"]: item["status"] for item in workstreams}
+        plan_map = {workstream.id: workstream for workstream in plan_bundle.workstreams}
+        for item in candidates:
+            workstream = plan_map.get(item["workstream_id"])
+            if workstream is None:
+                continue
+            if all(status_map.get(dep_id) == WorkstreamStatus.completed.value for dep_id in workstream.dependencies):
+                return item
         return None
 
     def _apply_supervisor_decision(

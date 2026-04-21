@@ -17,6 +17,17 @@ class PlannerService:
         ("success", "metric", "quality"),
         ("instruction", "checklist", "first", "day 1"),
     )
+    HARNESS_KEYWORDS: tuple[str, ...] = (
+        "harness",
+        "contract",
+        "non-negotiable",
+        "invariant",
+        "source policy",
+        "evidence policy",
+        "output contract",
+        "validation checklist",
+        "scope boundary",
+    )
 
     def __init__(
         self,
@@ -81,12 +92,20 @@ class PlannerService:
             total = projected
         return "\n".join(kept).strip()
 
+    def _extract_preserved_sections(self, sections: list[tuple[str, list[str]]]) -> list[tuple[str, str]]:
+        preserved: list[tuple[str, str]] = []
+        for heading, body_lines in sections:
+            if any(keyword in heading.lower() for keyword in self.HARNESS_KEYWORDS):
+                preserved.append((heading, "\n".join(body_lines).strip()))
+        return preserved
+
     def condense_request(self, raw_request: str) -> str:
         text = raw_request.strip()
         if len(text) <= self.request_digest_chars:
             return text
 
         preamble, sections = self._split_markdown_sections(text)
+        preserved_sections = self._extract_preserved_sections(sections)
         if not sections:
             head = text[: self.request_digest_chars // 2].rstrip()
             tail = text[-(self.request_digest_chars // 3) :].lstrip()
@@ -108,6 +127,11 @@ class PlannerService:
             f"Condensed planning digest from a longer request ({len(text)} chars).",
             "Preserve the original intent, rules, and milestones while keeping the plan compact.",
         ]
+        if preserved_sections:
+            lines.append("")
+            lines.append("## Non-Negotiable Harness Sections")
+            for heading, section_text in preserved_sections:
+                lines.extend(["", heading, section_text])
         if preamble_text:
             lines.extend(["", "## Request Overview", preamble_text])
 
@@ -155,6 +179,7 @@ class PlannerService:
                 "- include a verification plan (how to cross-check findings)\n"
                 "- prioritize authoritative and primary sources\n"
                 "- keep workstreams small enough to be completed in one research session\n\n"
+                "- HarnessContract fields are non-negotiable and must be filled when present in the request\n\n"
                 f"{request_label}:\n{planning_request}\n\n"
                 "Return JSON only."
             )
