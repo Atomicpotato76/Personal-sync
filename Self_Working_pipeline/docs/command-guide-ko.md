@@ -188,10 +188,14 @@ python -m apps.cli.main artifacts <run_id>
 ### 실제 작업물
 
 - 생성된 작업 폴더: `outputs/<run_id>/workspace/`
+- 리서치 마크다운 리포트: `outputs/<run_id>/workspace/reports/`
+- 리서치 근거 JSON: `outputs/<run_id>/workspace/research_evidence/`
 - 실행 결과 로그: `outputs/<run_id>/executions/`
 - 리뷰 결과: `outputs/<run_id>/reviews/`
 - 테스트 로그와 리포트: `outputs/<run_id>/tests/`
 - 최종 패키지와 매니페스트: `outputs/<run_id>/package/`
+
+Research 모드에서는 `research_evidence/*.json` 파일이 생성되고 검증됩니다.
 
 ## 9. 기본 점검
 
@@ -211,6 +215,15 @@ python -m apps.cli.main approve <run_id> --stage plan
 python -m apps.cli.main run <run_id>
 python -m apps.cli.main status <run_id>
 python -m apps.cli.main directions <run_id>
+```
+
+### Research 모드 최소 실행 예시
+
+```powershell
+$env:PIPELINE_MODE="research"
+python -m apps.cli.main plan --request-file .\proposal.md
+python -m apps.cli.main approve <run-id> --stage plan
+python -m apps.cli.main run <run-id>
 ```
 
 ### 방향 수정 후 다음 단계 진행

@@ -345,6 +345,77 @@ def test_feedback_creates_new_plan_version(tmp_path: Path) -> None:
     assert "Add a simple CSV export option for future users." in summary_text
 
 
+def test_dependency_ready_workstream_selected_before_list_order(tmp_path: Path) -> None:
+    plan = sample_plan_bundle(
+        [
+            Workstream(
+                id="ws-feature",
+                name="Feature",
+                layer="feature",
+                objective="Depends on core.",
+                deliverables=["src/feature.py"],
+                dependencies=["ws-core"],
+                acceptance_criteria=["done"],
+            ),
+            Workstream(
+                id="ws-core",
+                name="Core",
+                layer="foundation",
+                objective="Core first.",
+                deliverables=["src/core.py"],
+                acceptance_criteria=["done"],
+            ),
+        ]
+    )
+    executor = FakeExecutor(
+        {
+            "ws-core": [ExecutionResult(workstream_id="ws-core", summary="core", files=[feature_files(False)[0]])],
+            "ws-feature": [ExecutionResult(workstream_id="ws-feature", summary="feature", files=[feature_files(False)[1]])],
+        }
+    )
+    reviewer = FakeReviewer({"ws-core": [passing_review("ws-core")], "ws-feature": [passing_review("ws-feature")]})
+    orchestrator, _memory = build_orchestrator(tmp_path, planner=FakePlanner(plan), executor=executor, reviewer=reviewer)
+
+    run = orchestrator.create_plan("dependency order")
+    orchestrator.approve(run.run_id, stage=ApprovalStage.plan)
+    run = orchestrator.run(run.run_id)
+
+    assert run.stage.value == "executing"
+    assert run.status.value == "waiting_approval"
+    assert executor.calls["ws-core"] == 1
+    assert executor.calls["ws-feature"] == 0
+
+
+def test_dependency_cycle_or_missing_fails_clearly(tmp_path: Path) -> None:
+    plan = sample_plan_bundle(
+        [
+            Workstream(
+                id="ws-a",
+                name="A",
+                layer="foundation",
+                objective="Depends on missing workstream.",
+                deliverables=["src/a.py"],
+                dependencies=["ws-missing"],
+                acceptance_criteria=["done"],
+            )
+        ]
+    )
+    orchestrator, memory = build_orchestrator(
+        tmp_path,
+        planner=FakePlanner(plan),
+        executor=FakeExecutor({"ws-a": [ExecutionResult(workstream_id="ws-a", summary="a", files=[feature_files(False)[0]])]}),
+        reviewer=FakeReviewer({"ws-a": [passing_review("ws-a")]}),
+    )
+    run = orchestrator.create_plan("dependency broken")
+    orchestrator.approve(run.run_id, stage=ApprovalStage.plan)
+
+    with pytest.raises(RuntimeError, match="dependency-ready workstream"):
+        orchestrator.run(run.run_id)
+
+    failed = memory.get_run(run.run_id)
+    assert failed.status == RunStatus.failed
+
+
 def test_notifier_receives_checkpoint_and_manual_status(tmp_path: Path) -> None:
     plan = sample_plan_bundle(
         [

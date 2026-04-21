@@ -192,7 +192,10 @@ def build_orchestrator(settings: Settings | None = None) -> HermesOrchestrator:
             guidance_prompt=guidance_prompt,
             mode=settings.pipeline_mode,
         ),
-        tester=TestRunnerService(mode=settings.pipeline_mode),
+        tester=TestRunnerService(
+            mode=settings.pipeline_mode,
+            research_require_evidence_json=settings.research_require_evidence_json,
+        ),
         memory=memory,
         notifier=notifier,
         state_machine=HermesStateMachine(),

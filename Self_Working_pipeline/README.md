@@ -21,6 +21,23 @@ hermes-pipeline artifacts <run-id>
 hermes-pipeline doctor
 ```
 
+## Research Mode
+
+- `PIPELINE_MODE=research` enables investigation-oriented execution.
+- In this mode, each workstream is expected to emit both:
+  - markdown report(s) under `outputs/<run-id>/workspace/reports/`
+  - structured evidence JSON under `outputs/<run-id>/workspace/research_evidence/`
+- Research evidence JSON is validated during the testing stage for claim/source linkage and source identifiers.
+
+PowerShell quick start:
+
+```powershell
+$env:PIPELINE_MODE="research"
+python -m apps.cli.main plan --request-file .\proposal.md
+python -m apps.cli.main approve <run-id> --stage plan
+python -m apps.cli.main run <run-id>
+```
+
 ## Secret Handling
 
 - Keep real API keys in OS-level environment variables, not in workspace files.
@@ -68,6 +85,8 @@ setx OPENAI_API_KEY "your-new-key"
 - Plan history: `plans/<run-id>/versions/`
 - Saved direction snapshots: `plans/<run-id>/directions/`
 - Generated worktree: `outputs/<run-id>/workspace/`
+- Research markdown reports: `outputs/<run-id>/workspace/reports/`
+- Research evidence JSON: `outputs/<run-id>/workspace/research_evidence/`
 - Execution reports: `outputs/<run-id>/executions/`
 - Review reports: `outputs/<run-id>/reviews/`
 - Test reports and logs: `outputs/<run-id>/tests/`

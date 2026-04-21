@@ -103,6 +103,79 @@ class PlanChange(BaseModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class HarnessContract(BaseModel):
+    invariant_anchor: str = ""
+    scope_boundaries: list[str] = Field(default_factory=list)
+    evidence_policy: list[str] = Field(default_factory=list)
+    reasoning_protocol: str = ""
+    output_contract: str = ""
+    validation_checklist: list[str] = Field(default_factory=list)
+
+
+class ResearchSource(BaseModel):
+    source_id: str
+    title: str = ""
+    url: str | None = None
+    doi: str | None = None
+    pmid: str | None = None
+    accession: str | None = None
+    source_type: str
+    tier: str
+    retrieved_at: datetime = Field(default_factory=utc_now)
+    notes: str = ""
+
+
+class ResearchClaim(BaseModel):
+    claim_id: str
+    claim: str
+    source_ids: list[str]
+    confidence: str
+    status: str
+    notes: str = ""
+
+
+class ResearchConflict(BaseModel):
+    conflict_id: str
+    topic: str
+    source_ids: list[str]
+    description: str
+    resolution: str = ""
+
+
+class ResearchReport(BaseModel):
+    workstream_id: str
+    scope: str
+    claims: list[ResearchClaim]
+    sources: list[ResearchSource]
+    conflicts: list[ResearchConflict] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    confidence_summary: str = ""
+
+
+class SynthesisReport(BaseModel):
+    run_id: str
+    source_workstream_ids: list[str]
+    synthesis: str
+    claims: list[ResearchClaim]
+    sources: list[ResearchSource]
+    conflicts: list[ResearchConflict] = Field(default_factory=list)
+    unresolved_gaps: list[str] = Field(default_factory=list)
+
+
+class JudgeFinding(BaseModel):
+    severity: str
+    target_workstream_id: str | None = None
+    description: str
+    suggested_fix: str
+
+
+class JudgeReport(BaseModel):
+    approved: bool
+    summary: str
+    findings: list[JudgeFinding] = Field(default_factory=list)
+    retry_workstream_ids: list[str] = Field(default_factory=list)
+
+
 class PlanBundle(BaseModel):
     project_brief: ProjectBrief
     architecture_spec: ArchitectureSpec
@@ -110,6 +183,7 @@ class PlanBundle(BaseModel):
     workstreams: list[Workstream]
     test_plan: list[str]
     change_log: list[PlanChange] = Field(default_factory=list)
+    harness_contract: HarnessContract | None = None
 
 
 class TaskAssignment(BaseModel):
@@ -132,6 +206,7 @@ class ExecutionResult(BaseModel):
     summary: str
     files: list[GeneratedFile]
     notes: list[str] = Field(default_factory=list)
+    research_report: ResearchReport | None = None
 
 
 class ReviewIssue(BaseModel):
