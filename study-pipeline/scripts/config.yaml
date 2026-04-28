@@ -71,14 +71,6 @@ llm:
     thinking_budget: 10000       # extended thinking budget tokens
     prefer_subscription: true    # Claude Code CLI(구독) 우선 사용
   # 작업별 라우팅
-  router:
-    enabled: true
-    mode: "http"
-    project_path: "C:/Users/skyhu/Documents/AI_projects/gateway_router"
-    server_url: "http://100.67.163.118:8000"
-    profile: "study"
-    preset: ""
-    timeout: 180
   routing:
     # LM Studio 전용 (로컬, 비용 0)
     lmstudio_tasks:
@@ -103,7 +95,6 @@ llm:
     - "synthesis_deep"
     - "synthesis_final"
     - "user_response"
-    router_tasks: []
     cli_model_override:
       "mechanism": opus
       "pubmed_overview": sonnet
@@ -120,27 +111,9 @@ llm:
       "supplement": gpt-5.4
     reasoning_override: {}
 mem0:
-  enabled: true
+  enabled: false
   user_id: "student_main"
-  # Vector Store — 데스크톱의 Chroma 서버에 원격 접속
-  vector_store:
-    mode: "remote"                              # "remote" = 데스크톱 Chroma 서버 | "local" = 로컬 파일
-    host: "100.78.18.95"                        # Tailscale IP
-    port: 8001                                  # Chroma 서버 포트
-    collection: "study_memory"
-    local_path: "C:/Users/skyhu/Documents/AI_projects/study-pipeline/cache/mem0"  # fallback
-  # LLM — mem0 내부 요약/추론용 (LM Studio via Tailscale)
-  llm:
-    provider: "lmstudio"
-    model: "gemma-4-e4b"
-    base_url: "http://100.78.18.95:1234/v1"
-    api_key: "lm-studio"
-  # Embedder — 벡터 검색용 (LM Studio via Tailscale)
-  embedder:
-    provider: "openai"
-    model: "text-embedding-nomic-embed-text-v1.5"
-    base_url: "http://100.78.18.95:1234/v1"
-    api_key: "lm-studio"
+  mode: "local_json"
 
 # ── marker-pdf 설정 (v3) ──
 marker:
@@ -162,7 +135,7 @@ chapter_routing:
 
 # ── 논문 관리 (v3) ──
 papers:
-  enabled: true
+  enabled: false
   cache_dir: "C:/Users/skyhu/Documents/AI_projects/study-pipeline/cache/papers"
   max_papers_per_topic: 5
   prefer_open_access: true
@@ -172,7 +145,7 @@ papers:
 
 # ── PubMed 설정 (v3) ──
 pubmed:
-  enabled: true
+  enabled: false
   dynamic_keywords: true
   keyword_audience: "auto"     # auto | undergrad | research
   max_papers: 3
@@ -209,8 +182,6 @@ verifier:
     provenance_claims: true
     provenance_tags: true
   coverage_threshold: 0.7
-  semantic_matching: true
-  semantic_threshold: 0.75
   topic_aliases_file: "templates/topic_aliases.yaml"
   required_topics:
     organic_chem:
@@ -225,6 +196,7 @@ verifier:
 
 # ── 출력 설정 (v2) ──
 output:
+  formats: ["md"]
   smoke_mode: false
   emphasis_levels:
     S: "★★★"
@@ -235,11 +207,6 @@ output:
     vault_inject: true
     include_pubmed: false
     terminology: "english_first"
-  pdf:
-    engine: "weasyprint"
-    page_size: "A4"
-    include_toc: true
-    font: "Noto Sans KR"
 
 # ── 과목별 설정 ──
 subjects:

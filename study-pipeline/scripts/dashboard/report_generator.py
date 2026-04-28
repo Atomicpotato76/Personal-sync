@@ -1,4 +1,4 @@
-"""report_generator.py -- 세션 보고서 생성 (Claude LLM + PDF/MD, 이미지 크롭 포함)."""
+"""report_generator.py -- 세션 보고서 생성 (Claude LLM + Markdown)."""
 from __future__ import annotations
 
 import json
@@ -34,13 +34,6 @@ def _collect_session_data(pipeline_dir: Path, output_dir: Path, log_dir: Path) -
         if md_files:
             data["output_md"] = md_files[0].read_text(encoding="utf-8")
             data["output_files"].append(str(md_files[0]))
-
-    # PDF 출력 목록
-    pdf_dir = output_dir / "pdf"
-    if pdf_dir.exists():
-        pdf_files = sorted(pdf_dir.glob("*.pdf"), key=lambda f: f.stat().st_mtime, reverse=True)
-        for pf in pdf_files[:3]:
-            data["output_files"].append(str(pf))
 
     # weak_concepts
     wc_path = pipeline_dir / "weak_concepts.json"
@@ -174,50 +167,16 @@ def build_report_md(
     return output_path
 
 
-def build_report_pdf(
-    report_content: str,
-    images: list[dict],
-    output_path: Path,
-    config: dict,
-) -> Path:
-    """보고서를 PDF 파일로 생성. 이미지를 임베딩."""
-    import sys
-    scripts_dir = Path(__file__).resolve().parent.parent
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
-    from pdf_builder import build_pdf
-
-    # [IMAGE: ...] → 이미지 매핑
-    img_idx = 0
-    image_placements = []
-
-    def _replace_image(m):
-        nonlocal img_idx
-        if img_idx < len(images):
-            img = images[img_idx]
-            image_placements.append(img)
-            img_idx += 1
-            source_label = "교재" if img["source"] == "textbook" else "강의자료"
-            return f"*[{source_label} 이미지: {img['name']}]*"
-        return m.group(0)
-
-    cleaned = re.sub(r"\[IMAGE:\s*([^\]]+)\]", _replace_image, report_content)
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    build_pdf(cleaned, output_path, config, images=image_placements)
-    return output_path
-
-
 def generate_session_report(
     config: dict,
-    output_format: str = "pdf",
+    output_format: str = "md",
     subject: str | None = None,
 ) -> Optional[Path]:
     """세션 보고서를 생성하여 파일로 저장.
 
     Args:
         config: 전체 config dict
-        output_format: "pdf" 또는 "md"
+        output_format: "md"
         subject: 과목 키 (None이면 전체)
 
     Returns:
@@ -258,9 +217,5 @@ def generate_session_report(
     report_dir = Path(config.get("pipeline_dir", ".")) / "output" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
 
-    if output_format == "md":
-        out_path = report_dir / f"report_{subj_label}_{now}.md"
-        return build_report_md(report_content, images, out_path)
-    else:
-        out_path = report_dir / f"report_{subj_label}_{now}.pdf"
-        return build_report_pdf(report_content, images, out_path, config)
+    out_path = report_dir / f"report_{subj_label}_{now}.md"
+    return build_report_md(report_content, images, out_path)

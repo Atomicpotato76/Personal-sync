@@ -12,9 +12,6 @@ v3.2: Ollama → LM Studio 전환 (OpenAI 호환 API).
 
 from __future__ import annotations
 
-import contextlib
-import importlib.util
-import io
 import json
 import logging
 import os
@@ -86,175 +83,6 @@ class LMStudioClient:
         except Exception as e:
             logger.error(f"LM Studio 호출 실패: {e}")
             return None
-
-
-class ExternalRouterClient:
-    """External preset/profile router adapter."""
-
-    def __init__(self, config: dict):
-        self.enabled = bool(config.get("enabled", False))
-        self.mode = config.get("mode", "import")
-        self.project_path = (
-            os.environ.get("PBL_ROUTER_DIR")
-            or os.environ.get("PBL_ROUTER_PATH")
-            or config.get("project_path", "")
-        )
-        self.server_url = os.environ.get("PBL_ROUTER_URL", config.get("server_url", "http://localhost:8000")).rstrip("/")
-        self.profile = config.get("profile", "study")
-        self.preset = config.get("preset", "")
-        self.timeout = int(config.get("timeout", 180))
-        self.task_profiles = config.get("task_profiles", {})
-        self.task_presets = config.get("task_presets", {})
-        self._router_module = None
-        self._profiles: dict | None = None
-        self._presets: dict | None = None
-
-    def _resolve_profile(self, task_type: str) -> str:
-        return self.task_profiles.get(task_type, self.profile)
-
-    def _resolve_preset(self, task_type: str) -> str:
-        return self.task_presets.get(task_type, self.preset)
-
-    @staticmethod
-    def _compose_message(prompt: str, system: str = "") -> str:
-        return f"{system}\n\n{prompt}" if system else prompt
-
-    def _load_router_module(self):
-        if self._router_module is not None:
-            return self._router_module
-        if not self.project_path:
-            logger.warning("External router project_path not configured")
-            return None
-
-        router_path = os.path.join(self.project_path, "router_v4.py")
-        if not os.path.isfile(router_path):
-            logger.warning(f"External router not found: {router_path}")
-            return None
-
-        try:
-            from pathlib import Path
-
-            original_read_text = Path.read_text
-
-            def _utf8_fallback_read_text(path_obj, encoding=None, errors=None):
-                try:
-                    return original_read_text(path_obj, encoding=encoding, errors=errors)
-                except UnicodeDecodeError:
-                    if encoding is None:
-                        return original_read_text(path_obj, encoding="utf-8", errors=errors)
-                    raise
-
-            spec = importlib.util.spec_from_file_location("study_pipeline_external_router_v4", router_path)
-            if spec is None or spec.loader is None:
-                logger.warning(f"Failed to load external router spec: {router_path}")
-                return None
-            module = importlib.util.module_from_spec(spec)
-            Path.read_text = _utf8_fallback_read_text
-            try:
-                spec.loader.exec_module(module)
-            finally:
-                Path.read_text = original_read_text
-            self._router_module = module
-            return module
-        except Exception as e:
-            logger.warning(f"Failed to import external router: {e}")
-            return None
-
-    def _load_router_assets(self) -> bool:
-        if self._profiles is not None and self._presets is not None:
-            return True
-
-        module = self._load_router_module()
-        if module is None:
-            return False
-
-        try:
-            with contextlib.redirect_stdout(io.StringIO()):
-                self._profiles = module.load_profiles()
-                self._presets = module.load_presets()
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to load external router assets: {e}")
-            return False
-
-    def _generate_http(self, message: str, task_type: str = "") -> Optional[str]:
-        profile = self._resolve_profile(task_type)
-        preset = self._resolve_preset(task_type)
-        payload = {"message": message, "profile": profile}
-        if preset:
-            payload["preset"] = preset
-
-        try:
-            response = requests.post(f"{self.server_url}/chat", json=payload, timeout=self.timeout)
-            response.raise_for_status()
-            data = response.json()
-            content = data.get("content", "").strip()
-            if content:
-                logger.info(
-                    "External router response (http, profile=%s, preset=%s, task=%s)",
-                    profile,
-                    preset or "auto",
-                    task_type or "general",
-                )
-                return content
-        except Exception as e:
-            logger.warning(f"External router HTTP call failed: {e}")
-        return None
-
-    def _generate_import(self, message: str, task_type: str = "") -> Optional[str]:
-        if not self._load_router_assets():
-            return None
-
-        module = self._router_module
-        profiles = self._profiles or {}
-        presets = self._presets or {}
-        if not module or not profiles or not presets:
-            logger.warning("External router assets are empty")
-            return None
-
-        profile_key = self._resolve_profile(task_type)
-        profile = profiles.get(profile_key) or profiles.get("study") or next(iter(profiles.values()), None)
-        if profile is None:
-            logger.warning("No external router profiles available")
-            return None
-
-        preset_key = self._resolve_preset(task_type)
-        if preset_key:
-            if preset_key not in presets:
-                logger.warning(f"External router preset not found: {preset_key}")
-                return None
-            if preset_key not in profile.get("active_presets", []):
-                logger.warning(f"Preset '{preset_key}' is not active in profile '{profile_key}'")
-                return None
-        else:
-            preset_key, _ = module.smart_classify(message, profile, presets)
-
-        try:
-            result = module.call_with_preset(preset_key, message, presets, None)
-            if "error" in result:
-                logger.warning(f"External router backend error: {result['error']}")
-                return None
-            content = result.get("content", "").strip()
-            if content:
-                logger.info(
-                    "External router response (import, profile=%s, preset=%s, task=%s)",
-                    profile_key,
-                    preset_key,
-                    task_type or "general",
-                )
-                return content
-        except Exception as e:
-            logger.warning(f"External router import call failed: {e}")
-        return None
-
-    def generate(self, prompt: str, system: str = "", task_type: str = "") -> Optional[str]:
-        if not self.enabled:
-            return None
-
-        message = self._compose_message(prompt, system)
-        if self.mode == "http":
-            return self._generate_http(message, task_type=task_type)
-        return self._generate_import(message, task_type=task_type)
 
 
 class ChatGPTClient:
@@ -598,13 +426,11 @@ class LLMRouter:
         claude_info = self.registry.find_model(claude_model_id)
 
         self.lmstudio = LMStudioClient(llm_cfg.get("lmstudio", {}))
-        self.router_backend = ExternalRouterClient(llm_cfg.get("router", {}))
         self.chatgpt = ChatGPTClient(llm_cfg.get("chatgpt", {}), model_info=gpt_info)
         self.claude = ClaudeClient(llm_cfg.get("claude", {}), routing_config=routing, model_info=claude_info)
         self._lmstudio_available: Optional[bool] = None
         # 작업별 reasoning 레벨 오버라이드 (대시보드에서 설정)
         self._reasoning_override: dict[str, str] = routing.get("reasoning_override", {})
-        self._router_tasks = set(routing.get("router_tasks", []))
         self._lmstudio_tasks = set(routing.get("lmstudio_tasks", [
             "collect", "classify", "caption", "extract_keywords",
             "summarize_draft", "translate_term", "summarize", "draft",
@@ -664,12 +490,6 @@ class LLMRouter:
         use_thinking = task_type in self._THINKING_TASKS or reasoning_effort == "high"
 
         # ── Claude 전용 작업 ──
-        if task_type in self._router_tasks:
-            result = self.router_backend.generate(prompt, system, task_type=task_type)
-            if result:
-                return result
-            logger.warning(f"External router 실패 (task={task_type}), fallback chain")
-
         if task_type in self._claude_tasks:
             result = self.claude.generate(
                 prompt,
@@ -792,8 +612,6 @@ class LLMRouter:
         """특정 provider를 직접 지정하여 호출."""
         if provider == "lmstudio":
             return self.lmstudio.generate(prompt, system)
-        elif provider == "router":
-            return self.router_backend.generate(prompt, system)
         elif provider == "chatgpt":
             return self.chatgpt.generate(prompt, system)
         elif provider == "claude":

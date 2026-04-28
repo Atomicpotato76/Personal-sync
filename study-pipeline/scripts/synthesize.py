@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""synthesize.py -- v3: 3-tier LLM + 에이전트 + 논문 + mem0 통합 학습 파이프라인.
+"""synthesize.py -- v3: 3-tier LLM + 에이전트 + 선택형 논문 보강 + 로컬 학습 이력 파이프라인.
 
 10단계:
   [1/10] 소스 수집 (기존 + 논문)
@@ -8,10 +8,10 @@
   [4/10] 에이전트: 교차과목 연결 (Ollama)
   [5/10] 논문 풀텍스트 수집 + 요약 (Semantic Scholar → ChatGPT)
   [6/10] 갭 보충 콘텐츠 생성 (ChatGPT)
-  [7/10] 학습 계획 생성 (ChatGPT + mem0)
+  [7/10] 학습 계획 생성 (ChatGPT + 로컬 JSON)
   [8/10] 최종 종합 정리노트 (Claude)
   [9/10] 퀴즈 생성 (Claude)
-  [10/10] 저장 (MD + PDF + mem0 업데이트)
+  [10/10] 저장 (MD + 로컬 JSON 업데이트)
 """
 
 from __future__ import annotations
@@ -404,23 +404,8 @@ def save_synthesis_pdf(
     images: list[dict],
     config: dict,
 ) -> Path | None:
-    """종합 정리노트를 PDF로 저장."""
-    try:
-        from pdf_builder import build_pdf
-        paths = get_study_paths(config)
-        pdf_dir = paths.output_pdf
-        pdf_dir.mkdir(parents=True, exist_ok=True)
-        safe_name = re.sub(r"[^\w\-]", "_", note_name.replace(".md", ""))
-        filename = f"{subject}_{safe_name}.pdf"
-        pdf_path = pdf_dir / filename
-        build_pdf(md_content, pdf_path, config, images=images)
-        return pdf_path
-    except ImportError:
-        print("  [WARN] pdf_builder.py 미구현, PDF 생성 건너뜀")
-        return None
-    except Exception as e:
-        print(f"  [WARN] PDF 생성 오류: {e}")
-        return None
+    """PDF output is retired; keep this no-op for older tests/extensions."""
+    return None
 
 
 def collect_sources_for_note(note_path: Path, subject: str, config: dict, logger: logging.Logger) -> dict:
@@ -551,6 +536,10 @@ def _paper_relevance(note_text: str, abstract: str) -> float:
 
 def run_paper_enrichment(sources: dict, subject: str, config: dict, logger: logging.Logger) -> list[dict]:
     """관련 논문을 수집하고 relevance 필터를 적용해 프롬프트에 쓸 논문만 반환."""
+    if not config.get("papers", {}).get("enabled", False):
+        log_detail(logger, "논문 보강: 비활성화됨")
+        return []
+
     papers: list[dict] = []
     try:
         from paper_fetcher import fetch_papers_for_note
@@ -587,7 +576,7 @@ def run_paper_enrichment(sources: dict, subject: str, config: dict, logger: logg
 
 
 def build_synthesis(sources: dict, subject: str, config: dict, logger: logging.Logger) -> str | None:
-    """기본 종합 정리노트를 생성하고 PubMed 섹션을 보강."""
+    """기본 종합 정리노트를 생성하고, 설정된 경우에만 PubMed 섹션을 보강."""
     synthesis = synthesize_notes(sources, subject, config)
     if synthesis is None:
         return None
@@ -743,7 +732,7 @@ def persist_outputs(
     config: dict,
     logger: logging.Logger,
 ) -> tuple[Path, Path | None]:
-    """MD/PDF 결과물을 저장."""
+    """MD 결과물을 저장."""
     output_cfg = config.get("output", {})
     smoke_mode = bool(output_cfg.get("smoke_mode", False))
 
@@ -762,12 +751,7 @@ def persist_outputs(
         enrichment_path = save_enrichment_md(enrichment_content, subject, note_name, config)
         log_detail(logger, f"Enrichment 저장: {enrichment_path.name}")
 
-    all_images = sources["textbook_images"] + sources["slides_images"]
-    pdf_path = save_synthesis_pdf(final_main, subject, note_name, all_images, config)
-    if pdf_path:
-        log_detail(logger, f"PDF 저장: {pdf_path.name}")
-
-    return md_path, pdf_path
+    return md_path, None
 
 
 def run_stage4_verifier(
@@ -962,7 +946,7 @@ def process_note(note_path: Path, config: dict, logger: logging.Logger, pretest_
     cross_connections = run_cross_subject_analysis(sources, subject, config, logger)
     agent_results["cross_connections"] = cross_connections
 
-    log_step(logger, 5, "논문 수집 + PubMed 연동")
+    log_step(logger, 5, "논문 보강 확인")
     papers = run_paper_enrichment(sources, subject, config, logger)
 
     log_step(logger, 6, "LLM 종합 정리")
@@ -1072,7 +1056,7 @@ def process_sources(
     cross_connections = run_cross_subject_analysis(sources, subject, config, logger)
     agent_results["cross_connections"] = cross_connections
 
-    log_step(logger, 5, "논문 수집 + PubMed 연동")
+    log_step(logger, 5, "논문 보강 확인")
     papers = run_paper_enrichment(sources, subject, config, logger)
 
     log_step(logger, 6, "LLM 종합 정리")
@@ -1283,11 +1267,6 @@ def process_chapter(subject: str, chapter: str, config: dict, logger: logging.Lo
     chapter_name = f"{chapter}_notes"
     md_path = save_synthesis_md(synthesis, subject, f"{chapter_name}.md", config)
     print(f"  MD: {md_path.name}")
-
-    all_images = textbook_images + slides_images
-    pdf_path = save_synthesis_pdf(synthesis, subject, f"{chapter_name}.md", all_images, config)
-    if pdf_path:
-        print(f"  PDF: {pdf_path.name}")
 
     logger.info(f"챕터 통합 완료: {subject}/{chapter} (lecture_only={lecture_only_mode})")
     refresh_hermes_schedule(config, "chapter_completed", logger)

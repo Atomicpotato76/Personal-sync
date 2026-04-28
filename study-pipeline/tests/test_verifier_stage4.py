@@ -13,26 +13,13 @@ import verifier
 from verifier import verify_note_and_quiz
 
 
-def _base_config(
-    semantic_matching: bool = True,
-    required_topics: list[str] | None = None,
-) -> dict:
+def _base_config(required_topics: list[str] | None = None) -> dict:
     return {
         "scripts_dir": str(SCRIPTS_DIR),
         "verifier": {
-            "semantic_matching": semantic_matching,
-            "semantic_threshold": 0.75,
             "topic_aliases_file": "templates/topic_aliases.yaml",
             "required_topics": {
                 "organic_chem": required_topics or ["Lewis acid/base", "formal charge", "hybridization"]
-            },
-        },
-        "mem0": {
-            "vector_store": {"mode": "local"},
-            "embedder": {
-                "model": "text-embedding-nomic-embed-text-v1.5",
-                "base_url": "http://localhost:1234/v1",
-                "api_key": "lm-studio",
             },
         },
     }
@@ -60,7 +47,7 @@ def test_case1_substring_still_passes() -> None:
     result = verifier.check_coverage(
         note_text="Lewis acid/base 개념을 정리했고 formal charge 도 계산했다.",
         synthesis="",
-        config=_base_config(semantic_matching=False, required_topics=["Lewis acid/base", "formal charge"]),
+        config=_base_config(required_topics=["Lewis acid/base", "formal charge"]),
         subject="organic_chem",
     )
 
@@ -73,7 +60,7 @@ def test_case2_missing_topic_still_missing() -> None:
     result = verifier.check_coverage(
         note_text="결합 길이 이야기만 정리함",
         synthesis="",
-        config=_base_config(semantic_matching=False, required_topics=["Lewis acid/base"]),
+        config=_base_config(required_topics=["Lewis acid/base"]),
         subject="organic_chem",
     )
 
@@ -86,7 +73,7 @@ def test_case3_mixed_substring_and_missing_unchanged() -> None:
     result = verifier.check_coverage(
         note_text="formal charge는 다뤘다.",
         synthesis="",
-        config=_base_config(semantic_matching=False, required_topics=["formal charge", "hybridization"]),
+        config=_base_config(required_topics=["formal charge", "hybridization"]),
         subject="organic_chem",
     )
 
@@ -101,7 +88,7 @@ def test_alias_matching_korean_for_lewis_acid_base() -> None:
     result = verifier.check_coverage(
         note_text="루이스 산-염기 개념을 예시와 함께 설명했다.",
         synthesis="",
-        config=_base_config(semantic_matching=False, required_topics=["Lewis acid/base"]),
+        config=_base_config(required_topics=["Lewis acid/base"]),
         subject="organic_chem",
     )
 
@@ -111,83 +98,14 @@ def test_alias_matching_korean_for_lewis_acid_base() -> None:
     assert "루이스" in covered[0]["method"]
 
 
-def test_semantic_matching_covers_concept_without_keyword(monkeypatch) -> None:
-    def fake_embedding_cosine(topic: str, corpus_chunks: list[str], embedder_cfg: dict) -> tuple[float, str] | None:
-        if topic == "hybridization":
-            return 0.82, "sp3, sp2, sp 세 가지 혼성 오비탈을 비교함"
-        return 0.2, ""
-
-    monkeypatch.setattr(verifier, "_embedding_cosine", fake_embedding_cosine)
-
-    result = verifier.check_coverage(
-        note_text="결합축 배향과 오비탈 중첩 방식의 차이를 중심으로 세 구조를 비교 설명했다.",
-        synthesis="",
-        config=_base_config(semantic_matching=True, required_topics=["hybridization"]),
-        subject="organic_chem",
-    )
-
-    covered = result["covered_detail"]
-    assert result["pass"] is True
-    assert covered[0]["method"].startswith("semantic:0.82")
-
-
-def test_semantic_shallow_mention_stays_missing(monkeypatch) -> None:
-    def fake_embedding_cosine(topic: str, corpus_chunks: list[str], embedder_cfg: dict) -> tuple[float, str] | None:
-        return 0.40, "Lewis 라는 이름만 언급"
-
-    monkeypatch.setattr(verifier, "_embedding_cosine", fake_embedding_cosine)
-
-    result = verifier.check_coverage(
-        note_text="Lewis 라는 이름만 한번 언급하고 넘어감.",
-        synthesis="",
-        config=_base_config(semantic_matching=True, required_topics=["Lewis acid/base"]),
-        subject="organic_chem",
-    )
-
-    assert result["pass"] is False
-    assert result["missing"] == ["Lewis acid/base"]
-
-
-def test_semantic_disabled_runs_layer1_layer2_only(monkeypatch) -> None:
-    called = {"semantic": False}
-
-    def fake_embedding_cosine(topic: str, corpus_chunks: list[str], embedder_cfg: dict) -> tuple[float, str] | None:
-        called["semantic"] = True
-        return 0.99, ""
-
-    monkeypatch.setattr(verifier, "_embedding_cosine", fake_embedding_cosine)
-
+def test_coverage_runs_layer1_layer2_only() -> None:
     result = verifier.check_coverage(
         note_text="formal charge만 정리함",
         synthesis="",
-        config=_base_config(semantic_matching=False, required_topics=["formal charge", "hybridization"]),
+        config=_base_config(required_topics=["formal charge", "hybridization"]),
         subject="organic_chem",
     )
 
-    assert called["semantic"] is False
-    assert result["missing"] == ["hybridization"]
-
-
-def test_remote_chroma_failure_skips_semantic(monkeypatch) -> None:
-    called = {"semantic": False}
-
-    def fake_embedding_cosine(topic: str, corpus_chunks: list[str], embedder_cfg: dict) -> tuple[float, str] | None:
-        called["semantic"] = True
-        return 0.95, ""
-
-    monkeypatch.setattr(verifier, "_embedding_cosine", fake_embedding_cosine)
-
-    cfg = _base_config(semantic_matching=True, required_topics=["hybridization"])
-    cfg["mem0"]["vector_store"] = {"mode": "remote", "host": "127.0.0.1", "port": 1}
-
-    result = verifier.check_coverage(
-        note_text="세 가지 오비탈 배향 비교만 설명",
-        synthesis="",
-        config=cfg,
-        subject="organic_chem",
-    )
-
-    assert called["semantic"] is False
     assert result["missing"] == ["hybridization"]
 
 

@@ -3,7 +3,7 @@
 
 기능:
   1. 개념 갭 보충 콘텐츠 생성 (ChatGPT)
-  2. 학습 계획 설계 (취약점 + mem0 이력 기반)
+  2. 학습 계획 설계 (취약점 + 로컬 JSON 이력 기반)
   3. 교차과목 연결 심화 분석
 """
 
@@ -76,7 +76,7 @@ class StudyAnalyst:
         study_stats: dict,
         mastery_context: str,
     ) -> str:
-        """학습 계획 생성 (ChatGPT + mem0 데이터)."""
+        """학습 계획 생성 (ChatGPT + 로컬 학습 이력 데이터)."""
         weak_text = ""
         for c in weak_concepts[:10]:
             weak_text += f"  - {c['concept']}: mastery {c['mastery']:.0%}, priority {c['priority']}\n"

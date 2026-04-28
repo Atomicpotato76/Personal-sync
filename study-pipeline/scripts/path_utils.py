@@ -22,7 +22,6 @@ class StudyPaths:
     rejected: Path
     logs: Path
     output_md: Path
-    output_pdf: Path
 
 
 def _convert_win_to_wsl(path_str: str) -> str:
@@ -85,14 +84,9 @@ def apply_env_path_overrides(config: dict) -> dict:
         papers_cfg = cfg.setdefault("papers", {})
         papers_cfg["cache_dir"] = str(Path(cache_root_norm) / "papers")
 
-        mem0_cfg = cfg.setdefault("mem0", {})
-        vector_store_cfg = mem0_cfg.setdefault("vector_store", {})
-        vector_store_cfg["local_path"] = str(Path(cache_root_norm) / "mem0")
-
     if router_dir:
-        llm_cfg = cfg.setdefault("llm", {})
-        router_cfg = llm_cfg.setdefault("router", {})
-        router_cfg["project_path"] = _normalize_path_str(router_dir, cwd)
+        # External router support has been retired; keep the env var harmless.
+        pass
 
     return cfg
 
@@ -117,7 +111,6 @@ def get_study_paths(config: dict) -> StudyPaths:
         rejected=pipeline / "rejected",
         logs=pipeline / "logs",
         output_md=pipeline / "output" / "md",
-        output_pdf=pipeline / "output" / "pdf",
     )
 
 

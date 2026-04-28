@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""memory_manager.py -- mem0 기반 학습 메모리 관리 + 간격반복 (v3.2).
+"""memory_manager.py -- 로컬 JSON 기반 학습 메모리 관리 + 간격반복.
 
 기능:
-  1. mem0 연동: 학습 이력/개념 마스터리 저장·조회
-  2. 기존 weak_concepts.json과 호환
-  3. 간격반복 알고리즘: SM-2(기본) 또는 FSRS (config scheduler: fsrs)
+  1. weak_concepts.json / cache/learning_history.json 저장·조회
+  2. 간격반복 알고리즘: SM-2(기본) 또는 FSRS (config scheduler: fsrs)
      - FSRS: fsrs 6.x Scheduler 사용, Card 상태 직렬화 보관
      - SM-2: 기존 sr_interval/sr_ease_factor 기반
 """
@@ -12,7 +11,6 @@
 from __future__ import annotations
 
 import json
-import threading
 import logging
 import re
 from collections import Counter
@@ -35,21 +33,16 @@ except ImportError:
 
 
 class MemoryManager:
-    """mem0 + 로컬 JSON 하이브리드 학습 메모리."""
+    """로컬 JSON 학습 메모리."""
 
     def __init__(self, config: dict):
         self.config = config
         paths = get_study_paths(config)
         self.vault = paths.vault
         self.pipeline_dir = paths.pipeline
-        self.mem0_cfg = config.get("mem0", {})
-        self.enabled = self.mem0_cfg.get("enabled", False)
-        self.user_id = self.mem0_cfg.get("user_id", "student_main")
-
-        # mem0 클라이언트 (선택적)
-        self._mem0 = None
-        if self.enabled:
-            self._init_mem0_safe()
+        self.memory_cfg = config.get("memory", {})
+        self.enabled = True
+        self.user_id = self.memory_cfg.get("user_id", "student_main")
 
         # FSRS 스케줄러 (feature flag: config.scheduler = "fsrs")
         self._use_fsrs = (
@@ -62,7 +55,7 @@ class MemoryManager:
         else:
             logger.info("SM-2 스케줄러 사용 중 (config.scheduler = sm2)")
 
-        # 로컬 JSON (항상 사용, mem0의 fallback/보완)
+        # 로컬 JSON
         self.weak_path = self.pipeline_dir / "weak_concepts.json"
         self.history_path = self.pipeline_dir / "cache" / "learning_history.json"
         self.pending_links_path = self.pipeline_dir / "cache" / "pending_links.json"
@@ -70,122 +63,6 @@ class MemoryManager:
         self._weak_data = self._load_json(self.weak_path)
         self._history = self._load_json(self.history_path)
         self._note_index = self._load_json(self.note_index_path)
-
-    # ── mem0 초기화 ──
-
-    def _init_mem0_safe(self, timeout_sec: int = 8) -> None:
-        """mem0 초기화를 daemon 스레드에서 실행, timeout_sec 초 초과 시 포기.
-
-        daemon=True 이므로 블로킹 없이 메인 스레드가 즉시 계속 진행.
-        스레드가 타임아웃 이후에도 살아남아 연결 성공 시 _mem0를 덮어쓰는
-        race condition은 원격 서버가 실제로 오프라인일 때만 발생하며, 그 경우
-        _init_mem0 내부 except가 _mem0를 None으로 유지하므로 무해합니다.
-        """
-        host = self.mem0_cfg.get("vector_store", {}).get("host", "?")
-        t = threading.Thread(target=self._init_mem0, daemon=True)
-        t.start()
-        t.join(timeout=timeout_sec)
-        if t.is_alive():
-            logger.warning(
-                f"mem0 초기화 타임아웃 ({timeout_sec}초): "
-                f"원격 서버({host}) 미응답 - 로컬 JSON만 사용합니다."
-            )
-            self._mem0 = None
-
-    def _init_mem0(self):
-        """mem0 초기화 — config에서 LLM/Embedder 설정을 읽어 원격 Ollama/LM Studio 연결."""
-        try:
-            from mem0 import Memory
-
-            vs_cfg = self.mem0_cfg.get("vector_store", {})
-            mode = vs_cfg.get("mode", "local")
-            collection = vs_cfg.get("collection", "study_memory")
-
-            if mode == "remote":
-                host = vs_cfg.get("host", "localhost")
-                port = int(vs_cfg.get("port", 8000))
-                chroma_config = {
-                    "collection_name": collection,
-                    "host": host,
-                    "port": port,
-                }
-                logger.info(f"mem0 Chroma: remote ({host}:{port})")
-            else:
-                store_path = vs_cfg.get("local_path", "") or self.mem0_cfg.get("store_path", "")
-                if not store_path:
-                    store_path = str(self.pipeline_dir / "cache" / "mem0")
-                Path(store_path).mkdir(parents=True, exist_ok=True)
-                chroma_config = {
-                    "collection_name": collection,
-                    "path": store_path,
-                }
-                logger.info(f"mem0 Chroma: local ({store_path})")
-
-            mem0_config: dict = {
-                "vector_store": {"provider": "chroma", "config": chroma_config},
-            }
-
-            llm_cfg = self.mem0_cfg.get("llm", {})
-            llm_provider = llm_cfg.get("provider", "")
-            if llm_provider == "ollama":
-                mem0_config["llm"] = {
-                    "provider": "ollama",
-                    "config": {
-                        "model": llm_cfg.get("model", "llama3"),
-                        "ollama_base_url": llm_cfg.get("base_url", "http://localhost:11434"),
-                        "temperature": 0.1,
-                    },
-                }
-            elif llm_provider == "lmstudio":
-                mem0_config["llm"] = {
-                    "provider": "lmstudio",
-                    "config": {
-                        "model": llm_cfg.get("model", "local-model"),
-                        "lmstudio_base_url": llm_cfg.get("base_url", "http://localhost:1234/v1"),
-                        "api_key": llm_cfg.get("api_key", "lm-studio"),
-                        "temperature": 0.1,
-                        "lmstudio_response_format": {"type": "text"},
-                    },
-                }
-            elif llm_provider == "openai":
-                mem0_config["llm"] = {
-                    "provider": "openai",
-                    "config": {
-                        "model": llm_cfg.get("model", "local-model"),
-                        "openai_base_url": llm_cfg.get("base_url", "http://localhost:1234/v1"),
-                        "api_key": llm_cfg.get("api_key", "lm-studio"),
-                        "temperature": 0.1,
-                    },
-                }
-
-            emb_cfg = self.mem0_cfg.get("embedder", {})
-            emb_provider = emb_cfg.get("provider", "")
-            if emb_provider == "ollama":
-                mem0_config["embedder"] = {
-                    "provider": "ollama",
-                    "config": {
-                        "model": emb_cfg.get("model", "nomic-embed-text"),
-                        "ollama_base_url": emb_cfg.get("base_url", "http://localhost:11434"),
-                    },
-                }
-            elif emb_provider == "openai":
-                mem0_config["embedder"] = {
-                    "provider": "openai",
-                    "config": {
-                        "model": emb_cfg.get("model", "text-embedding-nomic-embed-text-v1.5"),
-                        "openai_base_url": emb_cfg.get("base_url", "http://localhost:1234/v1"),
-                        "api_key": emb_cfg.get("api_key", "lm-studio"),
-                    },
-                }
-
-            self._mem0 = Memory.from_config(mem0_config)
-            logger.info("mem0 초기화 완료")
-        except ImportError:
-            logger.warning("mem0ai 미설치: pip install mem0ai. 로컬 JSON만 사용")
-            self._mem0 = None
-        except Exception as e:
-            logger.error(f"mem0 초기화 실패: {e}")
-            self._mem0 = None
 
     # ── JSON I/O ──
 
@@ -370,21 +247,6 @@ class MemoryManager:
 
         self._save_json(self.weak_path, self._weak_data)
 
-        if self._mem0:
-            try:
-                mem_text = (
-                    f"과목 {subject}에서 {', '.join(concept_tags)} 개념을 "
-                    f"{'맞춤' if result == 'correct' else '틀림' if result == 'wrong' else '부분 정답'}. "
-                    f"출처: {source_note}. {memo}"
-                )
-                self._mem0.add(
-                    mem_text,
-                    user_id=self.user_id,
-                    metadata={"subject": subject, "result": result},
-                )
-            except Exception as e:
-                logger.warning(f"mem0 기록 실패: {e}")
-
         if "events" not in self._history:
             self._history["events"] = []
         self._history["events"].append({
@@ -521,15 +383,23 @@ class MemoryManager:
         ]
 
     def search_memory(self, query: str) -> list[dict]:
-        """mem0에서 관련 학습 기록 검색."""
-        if not self._mem0:
+        """로컬 learning_history.json에서 관련 학습 기록 검색."""
+        query_lower = query.lower().strip()
+        if not query_lower:
             return []
-        try:
-            results = self._mem0.search(query, user_id=self.user_id)
-            return results.get("results", []) if isinstance(results, dict) else results
-        except Exception as e:
-            logger.warning(f"mem0 검색 실패: {e}")
-            return []
+        results = []
+        for event in self._history.get("events", []):
+            haystack = " ".join(
+                str(value)
+                for value in [
+                    event.get("subject", ""),
+                    event.get("source", ""),
+                    " ".join(event.get("concepts", [])),
+                ]
+            ).lower()
+            if query_lower in haystack:
+                results.append(event)
+        return results[-20:]
 
     def get_study_stats(self, subject: Optional[str] = None) -> dict:
         """학습 통계 요약."""

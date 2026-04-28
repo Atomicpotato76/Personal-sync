@@ -1194,56 +1194,6 @@ def render_settings():
             st.divider()
             st.caption(f"LM Studio: {len(_lms_models)} models loaded at {lmstudio.get('base_url', '')}")
 
-    # ── Tab B: Task Routing ──
-        st.divider()
-        st.subheader("External Router")
-        router_cfg = llm.get("router", {})
-        default_router_path = str((SCRIPTS_DIR.parent / "pbl-router-v4").resolve())
-        router_cfg["enabled"] = st.checkbox("Enable external router", router_cfg.get("enabled", False), key="router_enabled")
-        router_cfg["mode"] = st.selectbox(
-            "Router Mode",
-            ["import", "http"],
-            index=["import", "http"].index(router_cfg.get("mode", "import")) if router_cfg.get("mode", "import") in ["import", "http"] else 0,
-            key="router_mode",
-        )
-        router_cfg["project_path"] = st.text_input(
-            "Router Project Path",
-            router_cfg.get("project_path", default_router_path),
-            key="router_project_path",
-        )
-        router_cfg["server_url"] = st.text_input(
-            "Router Server URL",
-            router_cfg.get("server_url", "http://localhost:8000"),
-            key="router_server_url",
-        )
-        col_router_1, col_router_2 = st.columns(2)
-        with col_router_1:
-            router_cfg["profile"] = st.text_input("Router Profile", router_cfg.get("profile", "study"), key="router_profile")
-        with col_router_2:
-            router_cfg["preset"] = st.text_input("Default Preset (optional)", router_cfg.get("preset", ""), key="router_preset")
-        router_cfg["timeout"] = st.slider("Router Timeout (sec)", 30, 300, int(router_cfg.get("timeout", 180)), key="router_timeout")
-
-        if st.button("Test Router", key="router_test"):
-            if router_cfg.get("mode", "import") == "http":
-                try:
-                    r = __import__("requests").get(f"{router_cfg['server_url'].rstrip('/')}/health", timeout=5)
-                    if r.status_code == 200:
-                        data = r.json()
-                        st.success(
-                            "Router reachable "
-                            f"(presets={data.get('presets_loaded', '?')}, profiles={data.get('profiles_loaded', '?')})"
-                        )
-                    else:
-                        st.error(f"HTTP {r.status_code}")
-                except Exception as e:
-                    st.error(f"Router connection failed: {e}")
-            else:
-                router_path = Path(router_cfg.get("project_path", "")) / "router_v4.py"
-                if router_path.exists():
-                    st.success(f"Router found: {router_path}")
-                else:
-                    st.error(f"router_v4.py not found under {router_cfg.get('project_path', '')}")
-
     with tab_routing:
         routing = llm.get("routing", {})
 
@@ -1272,11 +1222,10 @@ def render_settings():
 
         # 현재 할당 수집
         all_tasks = set()
-        for lst in [routing.get("lmstudio_tasks", []), routing.get("chatgpt_tasks", []), routing.get("claude_tasks", []), routing.get("router_tasks", [])]:
+        for lst in [routing.get("lmstudio_tasks", []), routing.get("chatgpt_tasks", []), routing.get("claude_tasks", [])]:
             all_tasks.update(lst)
         all_tasks = sorted(all_tasks)
-        router_enabled = bool(llm.get("router", {}).get("enabled", False))
-        provider_options = ["chatgpt", "claude"] + (["router"] if router_enabled else [])
+        provider_options = ["chatgpt", "claude"]
 
         # 단순작업 = lmstudio, 어려운작업 = chatgpt or claude
         simple_tasks = set(routing.get("lmstudio_tasks", []))
@@ -1342,8 +1291,6 @@ def render_settings():
                     default_prov = "chatgpt"
                 elif task in routing.get("claude_tasks", []):
                     default_prov = "claude"
-                elif task in routing.get("router_tasks", []):
-                    default_prov = "router"
                 else:
                     default_prov = "chatgpt" if task in _CHATGPT_DEFAULT else "claude"
 
@@ -1376,9 +1323,6 @@ def render_settings():
                         key=f"hgpt_{task}", label_visibility="collapsed",
                     )
                     new_gpt_overrides[task] = new_gpt
-                elif prov == "router":
-                    router_label = llm.get("router", {}).get("preset") or llm.get("router", {}).get("profile", "study")
-                    c3.write(f"`{router_label}`")
                 else:
                     c3.write("—")
 
@@ -1409,7 +1353,6 @@ def render_settings():
         routing["lmstudio_tasks"] = sorted(new_simple)
         routing["chatgpt_tasks"] = [t for t, p in changed_assignments.items() if p == "chatgpt"]
         routing["claude_tasks"] = [t for t, p in changed_assignments.items() if p == "claude"]
-        routing["router_tasks"] = [t for t, p in changed_assignments.items() if p == "router"]
         routing["cli_model_override"] = new_overrides
         routing["gpt_model_override"] = new_gpt_overrides
         routing["reasoning_override"] = new_reasoning
@@ -1474,38 +1417,17 @@ def render_settings():
     # ── Tab D: Features ──
     with tab_features:
         mem0 = config.get("mem0", {})
-        mem0["enabled"] = st.checkbox("mem0 (Learning Memory)", mem0.get("enabled", False), key="ft_mem0")
-        if mem0.get("enabled", False):
-            st.caption("mem0 backend summary")
-            vs_cfg = mem0.get("vector_store", {})
-            mem0_llm = mem0.get("llm", {})
-            mem0_embedder = mem0.get("embedder", {})
-            col_mem_llm, col_mem_emb = st.columns(2)
-            with col_mem_llm:
-                st.markdown("**mem0 LLM**")
-                st.caption(
-                    f"provider: `{mem0_llm.get('provider', '-')}`\n\n"
-                    f"model: `{mem0_llm.get('model', '-')}`\n\n"
-                    f"base_url: `{mem0_llm.get('base_url', '-')}`"
-                )
-            with col_mem_emb:
-                st.markdown("**mem0 Embedder**")
-                st.caption(
-                    f"provider: `{mem0_embedder.get('provider', '-')}`\n\n"
-                    f"model: `{mem0_embedder.get('model', '-')}`\n\n"
-                    f"base_url: `{mem0_embedder.get('base_url', '-')}`"
-                )
-            st.caption(
-                f"vector store: `{vs_cfg.get('mode', '-')}` / "
-                f"{vs_cfg.get('host', 'local')}:{vs_cfg.get('port', '-')}"
-            )
+        mem0["enabled"] = False
+        mem0["mode"] = "local_json"
+        st.subheader("Learning Memory")
+        st.caption("로컬 JSON만 사용합니다. weak_concepts.json과 cache/learning_history.json에 복습 기록을 저장합니다.")
 
         pubmed = config.get("pubmed", {})
-        pubmed["enabled"] = st.checkbox("PubMed Integration", pubmed.get("enabled", True), key="ft_pubmed")
+        pubmed["enabled"] = st.checkbox("PubMed Integration", pubmed.get("enabled", False), key="ft_pubmed")
         pubmed["max_papers"] = st.number_input("PubMed Max Papers", 1, 10, int(pubmed.get("max_papers", 3)), key="ft_pm_max")
 
         papers = config.get("papers", {})
-        papers["enabled"] = st.checkbox("Semantic Scholar Papers", papers.get("enabled", True), key="ft_papers")
+        papers["enabled"] = st.checkbox("Semantic Scholar Papers", papers.get("enabled", False), key="ft_papers")
 
         marker = config.get("marker", {})
         marker["enabled"] = st.checkbox("marker-pdf (Advanced PDF)", marker.get("enabled", True), key="ft_marker")
@@ -1551,8 +1473,7 @@ def render_report():
     paths = get_pipeline_paths(config)
     subjects = get_subject_display_names(config)
 
-    st.caption("파이프라인 세션 내용을 Claude가 정리하여 보고서를 생성합니다. "
-               "교재/강의자료의 이미지(분자식, 반응식 등)를 자동으로 크롭하여 포함합니다.")
+    st.caption("파이프라인 세션 내용을 Claude가 정리하여 Markdown 보고서를 생성합니다.")
 
     # ── 옵션 ──
     col_subj, col_fmt = st.columns(2)
@@ -1566,7 +1487,7 @@ def render_report():
             format_func=lambda k: subj_labels.get(k, k),
         )
     with col_fmt:
-        sel_fmt = st.selectbox("출력 형식", ["PDF", "Markdown"], index=0)
+        sel_fmt = st.selectbox("출력 형식", ["Markdown"], index=0)
 
     # ── 최근 출력 미리보기 ──
     from pathlib import Path as _Path
@@ -1599,7 +1520,7 @@ def render_report():
     gen_disabled = recent_md is None
     if st.button("📝 보고서 생성", type="primary", disabled=gen_disabled):
         subject_key = None if sel_subj == "(전체)" else sel_subj
-        fmt = "pdf" if sel_fmt == "PDF" else "md"
+        fmt = "md"
 
         with st.spinner("Claude로 보고서 생성 중... (1~2분 소요)"):
             try:
@@ -1611,7 +1532,7 @@ def render_report():
                     # 다운로드 버튼
                     with open(result_path, "rb") as f:
                         file_bytes = f.read()
-                    mime = "application/pdf" if fmt == "pdf" else "text/markdown"
+                    mime = "text/markdown"
                     st.download_button(
                         "⬇ 다운로드",
                         data=file_bytes,
