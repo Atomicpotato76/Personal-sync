@@ -440,8 +440,16 @@ class SourceAggregator:
                 slides_text = extract_pdf_text(slides_override)
                 slides_images = extract_pdf_images(slides_override, img_cache)
         else:
-            slides_text = self._match_slides_for_note(note_paths[0])
-            slides_images = self.get_slides_images()
+            slide_file = self._resolve_slide_filename(note_paths[0])
+            if slide_file:
+                slides_text = self.get_slides_text(slide_file)
+                slides_images = self.get_slides_images(slide_file)
+            elif not self.subject_cfg.get("lecture_chapters"):
+                slides_text = self.get_slides_text()
+                slides_images = self.get_slides_images()
+            else:
+                slides_text = None
+                slides_images = []
 
         return {
             "note_text": note_text,
@@ -481,9 +489,18 @@ class SourceAggregator:
             # 쪽수 참조 없으면 챕터 매핑 시도 (키워드 기반)
             textbook_text = self._try_chapter_mapping(note_text)
 
-        # 강의자료 텍스트
-        slides_text = self._match_slides_for_note(note_path)
-        slides_images = self.get_slides_images()
+        # 강의자료 텍스트 + 이미지 (매칭된 슬라이드만)
+        slide_file = self._resolve_slide_filename(note_path)
+        if slide_file:
+            slides_text = self.get_slides_text(slide_file)
+            slides_images = self.get_slides_images(slide_file)
+        elif not self.subject_cfg.get("lecture_chapters"):
+            # lecture_chapters 미설정 → 전체 (하위호환)
+            slides_text = self.get_slides_text()
+            slides_images = self.get_slides_images()
+        else:
+            slides_text = None
+            slides_images = []
 
         return {
             "note_text": note_text,
@@ -515,7 +532,62 @@ class SourceAggregator:
                     return self.get_textbook_text(pages=(pages[0], pages[1]))
         return None
 
+    def _resolve_slide_filename(self, note_path: Path) -> Optional[str]:
+        """노트에 대응하는 슬라이드 파일명을 lecture_chapters에서 찾는다.
+
+        매칭 순서:
+        1) 노트 본문 키워드 ("chN", "chapter N", "N장")
+        2) 노트 파일명 날짜 → date_range
+        3) 실패 시 None
+        """
+        lc = self.subject_cfg.get("lecture_chapters", {})
+        if not lc:
+            return None
+
+        # ── 1) 노트 본문 키워드 매칭 ──
+        note_text = self.get_note_text(note_path)
+        if note_text:
+            ch_patterns = [
+                r"[Cc]h(?:apter)?\s*(\d+)",
+                r"(\d+)\s*장",
+            ]
+            for pat in ch_patterns:
+                m = re.search(pat, note_text)
+                if m:
+                    ch_key = f"ch{int(m.group(1))}"
+                    if ch_key in lc:
+                        slide_file = lc[ch_key].get("slides")
+                        if slide_file:
+                            logger.info(f"  슬라이드 매칭(키워드): {ch_key} → {slide_file}")
+                            return slide_file
+
+        # ── 2) 파일명 날짜 → date_range 매칭 ──
+        note_date = _parse_note_date(note_path.name)
+        if note_date:
+            for ch_key, ch_cfg in lc.items():
+                dr = ch_cfg.get("date_range")
+                if not dr or len(dr) < 2:
+                    continue
+                try:
+                    start = date.fromisoformat(str(dr[0]))
+                    end = date.fromisoformat(str(dr[1]))
+                except (ValueError, TypeError):
+                    continue
+                if start <= note_date <= end:
+                    slide_file = ch_cfg.get("slides")
+                    if slide_file:
+                        logger.info(f"  슬라이드 매칭(날짜): {note_date} → {ch_key} → {slide_file}")
+                        return slide_file
+
+        logger.warning(f"  슬라이드 매칭 실패: {note_path.name} — 슬라이드 없이 진행")
+        return None
+
     def _match_slides_for_note(self, note_path: Path) -> Optional[str]:
-        """노트 날짜/이름으로 강의자료를 매칭."""
-        # 모든 강의자료 텍스트 반환 (추후 날짜 매칭 고도화 가능)
-        return self.get_slides_text()
+        """노트에 매칭되는 슬라이드 텍스트를 반환."""
+        slide_file = self._resolve_slide_filename(note_path)
+        if slide_file:
+            return self.get_slides_text(slide_file)
+        # lecture_chapters 자체가 없으면 기존 동작 유지 (전체)
+        if not self.subject_cfg.get("lecture_chapters"):
+            return self.get_slides_text()
+        return None

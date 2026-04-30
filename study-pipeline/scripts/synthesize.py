@@ -114,12 +114,58 @@ def collect_sources(note_path: Path, subject: str, config: dict) -> dict:
 # Step 2: LLM 종합 (2-pass 또는 1-pass)
 # ══════════════════════════════════════════════════════════════
 
+def _build_page_reference_info(
+    sources: dict,
+    subject: str,
+    config: dict,
+    chapter_key: str | None = None,
+) -> str:
+    """교재/슬라이드 페이지 참조 정보를 텍스트로 구성."""
+    lines = []
+    subject_cfg = config.get("subjects", {}).get(subject, {})
+
+    # chapter_key가 있으면 lecture_chapters에서 정보 추출
+    if chapter_key:
+        lc = subject_cfg.get("lecture_chapters", {})
+        ch_cfg = lc.get(chapter_key, {})
+        tp = ch_cfg.get("textbook_pages")
+        if tp and len(tp) >= 2:
+            lines.append(f"교재(Textbook) 범위: p.{tp[0]} ~ p.{tp[1]}")
+        slide_file = ch_cfg.get("slides")
+        if slide_file:
+            lines.append(f"슬라이드 파일: {slide_file}")
+    else:
+        # page_refs에서 추출 (Single Note 모드)
+        page_refs = sources.get("page_refs", {})
+        tb_pages = page_refs.get("textbook_pages", [])
+        if tb_pages:
+            lines.append(f"교재(Textbook) 참조 페이지: {', '.join(f'p.{p}' for p in sorted(tb_pages))}")
+        # textbook_chapter_pages에서 챕터 범위 추정
+        tcp = subject_cfg.get("textbook_chapter_pages", {})
+        if tcp:
+            ranges = [f"  {ch}: p.{v[0]}~p.{v[1]}" for ch, v in tcp.items() if isinstance(v, list) and len(v) >= 2]
+            if ranges:
+                lines.append("교재 챕터별 페이지:")
+                lines.extend(ranges)
+
+    # 교재명 (파일 경로면 파일명만 추출)
+    textbook_name = subject_cfg.get("textbook")
+    if textbook_name:
+        tb_display = Path(textbook_name).stem.replace("-", " ")
+        lines.append(f"교재명: {tb_display}")
+
+    if not lines:
+        return "(페이지 참조 정보 없음)"
+    return "\n".join(lines)
+
+
 def synthesize_notes(
     sources: dict,
     subject: str,
     config: dict,
     required_topics: list[str] | None = None,
     mode: str = "full",
+    chapter_key: str | None = None,
 ) -> str | None:
     """3종 소스를 LLM에 투입하여 종합 정리노트 생성."""
     from llm_router import LLMRouter
@@ -159,6 +205,8 @@ def synthesize_notes(
             "required_topics를 빠짐없이 커버하세요."
         )
 
+    page_ref_info = _build_page_reference_info(sources, subject, config, chapter_key=chapter_key)
+
     prompt = template.format(
         note_content=note_content,
         textbook_content=textbook_content,
@@ -166,6 +214,7 @@ def synthesize_notes(
         required_topics=required_topics_text,
         mode=mode,
         mode_instruction=mode_instruction,
+        page_reference_info=page_ref_info,
     )
 
     # 2-pass: LM Studio(초안) → Claude(심화)
@@ -184,7 +233,9 @@ def synthesize_notes(
                 "3. 시험 포인트 강조\n"
                 "4. 영문 화학/과학 용어 우선 적용\n"
                 "5. 교수님 코멘트 보존\n"
-                "으로 심화 보강해주세요. Markdown 형식 유���.\n\n"
+                "6. 초안의 📖 교재 p.XX / 📎 슬라이드 p.XX 페이지 참조를 보존하고, 보강 내용에도 페이지 참조 추가\n"
+                "으로 심화 보강해주세요. Markdown 형식 유지.\n\n"
+                f"--- 페이지 참조 ---\n{page_ref_info}\n\n"
                 f"--- 초안 ---\n{draft}"
             )
             print("  → Pass 2: Claude 심화 보강 중...")
@@ -1185,19 +1236,25 @@ def process_chapter_all(subject: str, config: dict, logger: logging.Logger) -> b
 
 def process_chapter(subject: str, chapter: str, config: dict, logger: logging.Logger) -> bool:
     """한 챕터의 모든 필기를 통합하여 종합 정리노트 생성."""
+    chapter_label = f"{subject}/{chapter}"
+    discord_notifier.pipeline_start("study-pipeline (chapter)", chapter_label)
+
     subject_cfg = config["subjects"].get(subject)
     if not subject_cfg:
         print(f"[ERROR] 과목 '{subject}' 없음")
+        discord_notifier.pipeline_error("study-pipeline (chapter)", f"과목 '{subject}' 없음", chapter_label)
         return False
 
     lecture_chapters = subject_cfg.get("lecture_chapters")
     if not isinstance(lecture_chapters, dict) or not lecture_chapters:
         print(f"[ERROR] subjects.{subject}.lecture_chapters 설정이 없습니다.")
+        discord_notifier.pipeline_error("study-pipeline (chapter)", "lecture_chapters 설정 없음", chapter_label)
         return False
 
     chapter_cfg = lecture_chapters.get(chapter)
     if not isinstance(chapter_cfg, dict):
         print(f"[ERROR] lecture_chapters에 '{chapter}' 설정 없음")
+        discord_notifier.pipeline_error("study-pipeline (chapter)", f"lecture_chapters에 '{chapter}' 없음", chapter_label)
         return False
 
     subject_dir = get_subject_dir(config, subject)
@@ -1267,8 +1324,10 @@ def process_chapter(subject: str, chapter: str, config: dict, logger: logging.Lo
         config,
         required_topics=required_topics,
         mode="lecture_only" if lecture_only_mode else "full",
+        chapter_key=chapter,
     )
     if not synthesis:
+        discord_notifier.pipeline_error("study-pipeline (chapter)", "LLM 종합 생성 실패", chapter_label)
         return False
 
     synthesis = add_pubmed_section(synthesis, subject, note_text, config)
@@ -1291,6 +1350,11 @@ def process_chapter(subject: str, chapter: str, config: dict, logger: logging.Lo
 
     logger.info(f"챕터 통합 완료: {subject}/{chapter} (lecture_only={lecture_only_mode})")
     refresh_hermes_schedule(config, "chapter_completed", logger)
+
+    summary = f"{len(synthesis)}자 정리노트 생성 (chapter: {chapter})"
+    if lecture_only_mode:
+        summary += " [lecture-only]"
+    discord_notifier.pipeline_complete("study-pipeline (chapter)", summary, chapter_label)
     return True
 
 

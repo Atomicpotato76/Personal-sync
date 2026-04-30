@@ -12,6 +12,7 @@ Rules:
 - At the end, include a "핵심 요약" section with bullet points.
 - Output ONLY Markdown. No JSON, no code fences around the entire output.
 - Keep the note concise but thorough — aim for quality over length.
+- **Page references:** When a concept or figure is clearly from the textbook or slides, add an inline reference like 📖 교재 p.XX or 📎 슬라이드 p.XX at the end of the relevant sentence or paragraph. Use the page info provided below. If no specific page is identifiable, omit the reference — never guess page numbers.
 - Every major paragraph MUST end with provenance + importance in this format: [S] ★★★, [D] ★★, or [E] ★.
 - Provenance tags:
   - [S] Source-backed: directly supported by lecture notes/textbook/slides
@@ -32,6 +33,9 @@ The following sources are provided:
 3. SLIDES (강의자료): Lecture slides/presentation materials
 
 Synthesize these into a unified study note. Prioritize lecture notes for structure, enrich with textbook depth, and use slides for key diagrams/formulas.
+
+--- PAGE REFERENCE INFO ---
+{page_reference_info}
 
 --- LECTURE NOTES ---
 {note_content}

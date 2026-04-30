@@ -1,13 +1,21 @@
 """pipeline_runner.py -- synthesize.py 비동기 실행 + 진행률 추적."""
 from __future__ import annotations
 
+import os
 import queue
 import re
+import signal
 import subprocess
 import sys
 import threading
 from pathlib import Path
 from typing import Optional
+
+try:
+    import psutil
+    _HAS_PSUTIL = True
+except ImportError:
+    _HAS_PSUTIL = False
 
 
 class PipelineRunner:
@@ -79,14 +87,23 @@ class PipelineRunner:
             except queue.Empty:
                 break
 
-        self._process = subprocess.Popen(
-            [self.python_exe] + args,
+        popen_kwargs = dict(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             encoding="utf-8",
             errors="replace",
             cwd=str(self.scripts_dir),
+        )
+        # Windows: CREATE_NEW_PROCESS_GROUP으로 taskkill /T 지원
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kwargs["start_new_session"] = True
+
+        self._process = subprocess.Popen(
+            [self.python_exe] + args,
+            **popen_kwargs,
         )
         t = threading.Thread(target=self._read_output, daemon=True)
         t.start()
@@ -115,8 +132,27 @@ class PipelineRunner:
         return lines
 
     def stop(self):
+        """프로세스 트리 전체를 강제 종료."""
         if self._process and self._is_running:
-            self._process.kill()
+            pid = self._process.pid
+            try:
+                if _HAS_PSUTIL:
+                    parent = psutil.Process(pid)
+                    children = parent.children(recursive=True)
+                    for child in children:
+                        child.kill()
+                    parent.kill()
+                elif sys.platform == "win32":
+                    # psutil 없으면 taskkill /T /F 로 트리 킬
+                    subprocess.run(
+                        ["taskkill", "/PID", str(pid), "/T", "/F"],
+                        capture_output=True,
+                    )
+                else:
+                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+            except Exception:
+                # 최후 수단
+                self._process.kill()
             self._is_running = False
 
     @staticmethod
